@@ -90,6 +90,7 @@ struct _GstTaskPoolClass {
 GType           gst_task_pool_get_type    (void);
 
 GstTaskPool *   gst_task_pool_new         (void);
+GstTaskPool *   gst_task_pool_new_full    (gint max_threads, gboolean exclusive);
 void            gst_task_pool_prepare     (GstTaskPool *pool, GError **error);
 
 gpointer        gst_task_pool_push        (GstTaskPool *pool, GstTaskPoolFunction func,

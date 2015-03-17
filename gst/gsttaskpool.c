@@ -41,6 +41,9 @@ GST_DEBUG_CATEGORY_STATIC (taskpool_debug);
 
 struct _GstTaskPoolPrivate
 {
+  gint max_threads;
+  gboolean exclusive;
+
   gint need_schedule_thread;
   GMainContext *schedule_context;
   GMainLoop *schedule_loop;
@@ -84,7 +87,9 @@ static void
 default_prepare (GstTaskPool * pool, GError ** error)
 {
   GST_OBJECT_LOCK (pool);
-  pool->pool = g_thread_pool_new ((GFunc) default_func, pool, -1, FALSE, NULL);
+  pool->pool =
+      g_thread_pool_new ((GFunc) default_func, pool, pool->priv->max_threads,
+      pool->priv->exclusive, NULL);
   GST_OBJECT_UNLOCK (pool);
 }
 
@@ -153,6 +158,9 @@ gst_task_pool_init (GstTaskPool * pool)
 {
   pool->priv = GST_TASK_POOL_GET_PRIVATE (pool);
 
+  pool->priv->max_threads = -1;
+  pool->priv->exclusive = FALSE;
+
   pool->priv->need_schedule_thread = 0;
   pool->priv->schedule_context = NULL;
   pool->priv->schedule_loop = NULL;
@@ -191,6 +199,19 @@ gst_task_pool_new (void)
   GstTaskPool *pool;
 
   pool = g_object_newv (GST_TYPE_TASK_POOL, 0, NULL);
+
+  return pool;
+}
+
+GstTaskPool *
+gst_task_pool_new_full (gint max_threads, gboolean exclusive)
+{
+  GstTaskPool *pool;
+
+  pool = g_object_newv (GST_TYPE_TASK_POOL, 0, NULL);
+
+  pool->priv->max_threads = max_threads;
+  pool->priv->exclusive = exclusive;
 
   return pool;
 }
