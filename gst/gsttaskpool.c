@@ -270,3 +270,18 @@ gst_task_pool_join (GstTaskPool * pool, gpointer id)
   if (klass->join)
     klass->join (pool, id);
 }
+
+GstTaskPool *
+gst_task_pool_get_default (void)
+{
+  static GstTaskPool *pool = NULL;
+
+  if (g_once_init_enter (&pool)) {
+    GstTaskPool *_pool = gst_task_pool_new ();
+
+    gst_task_pool_prepare (_pool, NULL);
+    g_once_init_leave (&pool, _pool);
+  }
+
+  return gst_object_ref (pool);
+}

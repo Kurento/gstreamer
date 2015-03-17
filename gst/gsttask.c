@@ -144,27 +144,12 @@ static void gst_task_finalize (GObject * object);
 
 static void gst_task_func (GstTask * task);
 
-static GMutex pool_lock;
-
 #define _do_init \
 { \
   GST_DEBUG_CATEGORY_INIT (task_debug, "task", 0, "Processing tasks"); \
 }
 
 G_DEFINE_TYPE_WITH_CODE (GstTask, gst_task, GST_TYPE_OBJECT, _do_init);
-
-static void
-init_klass_pool (GstTaskClass * klass)
-{
-  g_mutex_lock (&pool_lock);
-  if (klass->pool) {
-    gst_task_pool_cleanup (klass->pool);
-    gst_object_unref (klass->pool);
-  }
-  klass->pool = gst_task_pool_new ();
-  gst_task_pool_prepare (klass->pool, NULL);
-  g_mutex_unlock (&pool_lock);
-}
 
 static void
 gst_task_class_init (GstTaskClass * klass)
@@ -177,7 +162,7 @@ gst_task_class_init (GstTaskClass * klass)
 
   gobject_class->finalize = gst_task_finalize;
 
-  init_klass_pool (klass);
+  klass->pool = gst_task_pool_get_default ();
 }
 
 static void
@@ -194,11 +179,7 @@ gst_task_init (GstTask * task)
   g_cond_init (&task->cond);
   SET_TASK_STATE (task, GST_TASK_STOPPED);
 
-  /* use the default klass pool for this task, users can
-   * override this later */
-  g_mutex_lock (&pool_lock);
   task->priv->pool = gst_object_ref (klass->pool);
-  g_mutex_unlock (&pool_lock);
 
   /* clear floating flag */
   gst_object_ref_sink (task);
@@ -381,7 +362,8 @@ gst_task_cleanup_all (void)
   GstTaskClass *klass;
 
   if ((klass = g_type_class_peek (GST_TYPE_TASK))) {
-    init_klass_pool (klass);
+    gst_task_pool_cleanup (klass->pool);
+    gst_task_pool_prepare (klass->pool, NULL);
   }
 }
 
