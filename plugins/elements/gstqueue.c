@@ -250,6 +250,31 @@ queue_leaky_get_type (void)
 
 static guint gst_queue_signals[LAST_SIGNAL] = { 0 };
 
+static gboolean
+gst_queue_post_message (GstElement * element, GstMessage * msg)
+{
+  GstQueue *queue = GST_QUEUE (element);
+  gboolean ret;
+
+  gst_message_ref (msg);
+  ret = GST_ELEMENT_CLASS (parent_class)->post_message (element, msg);
+
+  if (GST_MESSAGE_TYPE (msg) == GST_MESSAGE_STREAM_STATUS) {
+    GstStreamStatusType type;
+
+    gst_message_parse_stream_status (msg, &type, NULL);
+    if (type == GST_STREAM_STATUS_TYPE_CREATE) {
+      queue->schedule_task =
+          gst_task_get_scheduleable (GST_PAD_TASK (queue->srcpad));
+      GST_DEBUG_OBJECT (queue, "Scheduling task %d", queue->schedule_task);
+    }
+  }
+
+  gst_message_unref (msg);
+
+  return ret;
+}
+
 static void
 gst_queue_class_init (GstQueueClass * klass)
 {
@@ -403,6 +428,8 @@ gst_queue_class_init (GstQueueClass * klass)
           G_PARAM_STATIC_STRINGS));
 
   gobject_class->finalize = gst_queue_finalize;
+
+  gstelement_class->post_message = gst_queue_post_message;
 
   gst_element_class_set_static_metadata (gstelement_class,
       "Queue",
@@ -726,7 +753,10 @@ gst_queue_locked_enqueue_buffer (GstQueue * queue, gpointer item)
   qitem->is_query = FALSE;
   qitem->size = bsize;
   gst_queue_array_push_tail (queue->queue, qitem);
-  GST_QUEUE_SIGNAL_ADD (queue);
+  if (queue->schedule_task)
+    gst_task_schedule (GST_PAD_TASK (queue->srcpad));
+  else
+    GST_QUEUE_SIGNAL_ADD (queue);
 }
 
 static gboolean
@@ -760,7 +790,10 @@ gst_queue_locked_enqueue_buffer_list (GstQueue * queue, gpointer item)
   qitem->is_query = FALSE;
   qitem->size = bsize;
   gst_queue_array_push_tail (queue->queue, qitem);
-  GST_QUEUE_SIGNAL_ADD (queue);
+  if (queue->schedule_task)
+    gst_task_schedule (GST_PAD_TASK (queue->srcpad));
+  else
+    GST_QUEUE_SIGNAL_ADD (queue);
 }
 
 static inline void
@@ -804,7 +837,10 @@ gst_queue_locked_enqueue_event (GstQueue * queue, gpointer item)
   qitem->item = item;
   qitem->is_query = FALSE;
   gst_queue_array_push_tail (queue->queue, qitem);
-  GST_QUEUE_SIGNAL_ADD (queue);
+  if (queue->schedule_task)
+    gst_task_schedule (GST_PAD_TASK (queue->srcpad));
+  else
+    GST_QUEUE_SIGNAL_ADD (queue);
 }
 
 /* dequeue an item from the queue and update level stats, with QUEUE_LOCK */
@@ -915,7 +951,10 @@ gst_queue_handle_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
       GST_QUEUE_MUTEX_LOCK (queue);
       queue->srcresult = GST_FLOW_FLUSHING;
       /* unblock the loop and chain functions */
-      GST_QUEUE_SIGNAL_ADD (queue);
+      if (queue->schedule_task)
+        gst_task_schedule (GST_PAD_TASK (queue->srcpad));
+      else
+        GST_QUEUE_SIGNAL_ADD (queue);
       GST_QUEUE_SIGNAL_DEL (queue);
       queue->last_query = FALSE;
       g_cond_signal (&queue->query_handled);
@@ -1023,7 +1062,10 @@ gst_queue_handle_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
         qitem->item = GST_MINI_OBJECT_CAST (query);
         qitem->is_query = TRUE;
         gst_queue_array_push_tail (queue->queue, qitem);
-        GST_QUEUE_SIGNAL_ADD (queue);
+        if (queue->schedule_task)
+          gst_task_schedule (GST_PAD_TASK (queue->srcpad));
+        else
+          GST_QUEUE_SIGNAL_ADD (queue);
         g_cond_wait (&queue->query_handled, &queue->qlock);
         if (queue->srcresult != GST_FLOW_OK)
           goto out_flushing;
@@ -1453,38 +1495,47 @@ gst_queue_loop (GstPad * pad)
 {
   GstQueue *queue;
   GstFlowReturn ret;
+  gboolean empty;
 
   queue = (GstQueue *) GST_PAD_PARENT (pad);
 
   /* have to lock for thread-safety */
   GST_QUEUE_MUTEX_LOCK_CHECK (queue, out_flushing);
 
-  while (gst_queue_is_empty (queue)) {
-    GST_CAT_DEBUG_OBJECT (queue_dataflow, queue, "queue is empty");
-    if (!queue->silent) {
-      GST_QUEUE_MUTEX_UNLOCK (queue);
-      g_signal_emit (queue, gst_queue_signals[SIGNAL_UNDERRUN], 0);
-      GST_QUEUE_MUTEX_LOCK_CHECK (queue, out_flushing);
-    }
+  if (queue->schedule_task) {
+    empty = gst_queue_is_empty (queue);
+    if (empty)
+      gst_task_unschedule (GST_PAD_TASK (pad));
+  } else {
+    while ((empty = gst_queue_is_empty (queue))) {
+      GST_CAT_DEBUG_OBJECT (queue_dataflow, queue, "queue is empty");
+      if (!queue->silent) {
+        GST_QUEUE_MUTEX_UNLOCK (queue);
+        g_signal_emit (queue, gst_queue_signals[SIGNAL_UNDERRUN], 0);
+        GST_QUEUE_MUTEX_LOCK_CHECK (queue, out_flushing);
+      }
 
-    /* we recheck, the signal could have changed the thresholds */
-    while (gst_queue_is_empty (queue)) {
-      GST_QUEUE_WAIT_ADD_CHECK (queue, out_flushing);
-    }
+      /* we recheck, the signal could have changed the thresholds */
+      while ((empty = gst_queue_is_empty (queue))) {
+        GST_QUEUE_WAIT_ADD_CHECK (queue, out_flushing);
+      }
 
-    GST_CAT_DEBUG_OBJECT (queue_dataflow, queue, "queue is not empty");
-    if (!queue->silent) {
-      GST_QUEUE_MUTEX_UNLOCK (queue);
-      g_signal_emit (queue, gst_queue_signals[SIGNAL_RUNNING], 0);
-      g_signal_emit (queue, gst_queue_signals[SIGNAL_PUSHING], 0);
-      GST_QUEUE_MUTEX_LOCK_CHECK (queue, out_flushing);
+      GST_CAT_DEBUG_OBJECT (queue_dataflow, queue, "queue is not empty");
+      if (!queue->silent) {
+        GST_QUEUE_MUTEX_UNLOCK (queue);
+        g_signal_emit (queue, gst_queue_signals[SIGNAL_RUNNING], 0);
+        g_signal_emit (queue, gst_queue_signals[SIGNAL_PUSHING], 0);
+        GST_QUEUE_MUTEX_LOCK_CHECK (queue, out_flushing);
+      }
     }
   }
 
-  ret = gst_queue_push_one (queue);
-  queue->srcresult = ret;
-  if (ret != GST_FLOW_OK)
-    goto out_flushing;
+  if (!empty) {
+    ret = gst_queue_push_one (queue);
+    queue->srcresult = ret;
+    if (ret != GST_FLOW_OK)
+      goto out_flushing;
+  }
 
   GST_QUEUE_MUTEX_UNLOCK (queue);
 

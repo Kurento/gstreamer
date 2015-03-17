@@ -1,5 +1,6 @@
 stream-status
 rtpool-test
+schedule-tasks
 *.bb
 *.bbg
 *.da
