@@ -120,13 +120,16 @@ enum
   PROP_MIN_THRESHOLD_TIME,
   PROP_LEAKY,
   PROP_SILENT,
-  PROP_FLUSH_ON_EOS
+  PROP_FLUSH_ON_EOS,
+  PROP_GENERATE_BUFFER_LIST
 };
 
 /* default property values */
 #define DEFAULT_MAX_SIZE_BUFFERS  200   /* 200 buffers */
 #define DEFAULT_MAX_SIZE_BYTES    (10 * 1024 * 1024)    /* 10 MB       */
 #define DEFAULT_MAX_SIZE_TIME     GST_SECOND    /* 1 second    */
+
+#define DEFAULT_GENERATE_BUFFER_LIST FALSE
 
 #define GST_QUEUE_MUTEX_LOCK(q) G_STMT_START {                          \
   g_mutex_lock (&q->qlock);                                              \
@@ -197,7 +200,7 @@ static GstFlowReturn gst_queue_chain (GstPad * pad, GstObject * parent,
     GstBuffer * buffer);
 static GstFlowReturn gst_queue_chain_list (GstPad * pad, GstObject * parent,
     GstBufferList * buffer_list);
-static GstFlowReturn gst_queue_push_one (GstQueue * queue);
+static GstFlowReturn gst_queue_push (GstQueue * queue);
 static void gst_queue_loop (GstPad * pad);
 
 static GstFlowReturn gst_queue_handle_sink_event (GstPad * pad,
@@ -427,6 +430,21 @@ gst_queue_class_init (GstQueueClass * klass)
           G_PARAM_READWRITE | GST_PARAM_MUTABLE_PLAYING |
           G_PARAM_STATIC_STRINGS));
 
+  /**
+   * GstQueue:generate-buffer-list
+   *
+   * If this property is set to TRUE all buffers or buffer-list available
+   * in the queue are combined in a buffer-list before being pushed.
+   *
+   * Since: 1.6
+   */
+  g_object_class_install_property (gobject_class, PROP_GENERATE_BUFFER_LIST,
+      g_param_spec_boolean ("generate-buffer-list", "Generate buffer list",
+          "Combine queued buffers/buffer-list to push them in a single "
+          "buffer-list", DEFAULT_GENERATE_BUFFER_LIST,
+          G_PARAM_READWRITE | GST_PARAM_MUTABLE_PLAYING |
+          G_PARAM_STATIC_STRINGS));
+
   gobject_class->finalize = gst_queue_finalize;
 
   gstelement_class->post_message = gst_queue_post_message;
@@ -501,6 +519,8 @@ gst_queue_init (GstQueue * queue)
   queue->src_tainted = TRUE;
 
   queue->newseg_applied_to_src = FALSE;
+
+  queue->generate_buffer_list = DEFAULT_GENERATE_BUFFER_LIST;
 
   GST_DEBUG_OBJECT (queue,
       "initialized queue's not_empty & not_full conditions");
@@ -845,6 +865,17 @@ gst_queue_locked_enqueue_event (GstQueue * queue, gpointer item)
     gst_task_schedule (GST_PAD_TASK (queue->srcpad));
   else
     GST_QUEUE_SIGNAL_ADD (queue);
+}
+
+static gboolean
+gst_queue_next_is_buffer (GstQueue * queue)
+{
+  GstQueueItem *qitem;
+
+  qitem = gst_queue_array_peek_head_struct (queue->queue);
+
+  return qitem && (GST_IS_BUFFER (qitem->item)
+      || GST_IS_BUFFER_LIST (qitem->item));
 }
 
 /* dequeue an item from the queue and update level stats, with QUEUE_LOCK */
@@ -1347,10 +1378,18 @@ gst_queue_chain (GstPad * pad, GstObject * parent, GstBuffer * buffer)
       GST_MINI_OBJECT_CAST (buffer), FALSE);
 }
 
+static gboolean
+add_to_list (GstBuffer ** buffer, guint idx, gpointer data)
+{
+  gst_buffer_list_add (data, gst_buffer_ref (*buffer));
+
+  return TRUE;
+}
+
 /* dequeue an item from the queue an push it downstream. This functions returns
  * the result of the push. */
 static GstFlowReturn
-gst_queue_push_one (GstQueue * queue)
+gst_queue_push (GstQueue * queue)
 {
   GstFlowReturn result = queue->srcresult;
   GstMiniObject *data;
@@ -1364,6 +1403,40 @@ next:
   is_list = GST_IS_BUFFER_LIST (data);
 
   if (GST_IS_BUFFER (data) || is_list) {
+    if (queue->generate_buffer_list) {
+      /* Try to dequeue all buffers/buffer-list in the queue */
+
+      while (gst_queue_next_is_buffer (queue)) {
+        GstMiniObject *new_data = gst_queue_locked_dequeue (queue);
+        gboolean new_is_list = GST_IS_BUFFER_LIST (new_data);
+
+        if (!is_list) {
+          GstBufferList *list = gst_buffer_list_new ();
+
+          gst_buffer_list_add (list, GST_BUFFER_CAST (data));
+          data = GST_MINI_OBJECT_CAST (list);
+          is_list = TRUE;
+        } else {
+          GstBufferList *list = GST_BUFFER_LIST_CAST (data);
+
+          data = GST_MINI_OBJECT_CAST (gst_buffer_list_make_writable (list));
+        }
+
+        if (new_is_list) {
+          GstBufferList *list = GST_BUFFER_LIST_CAST (new_data);
+
+          GST_LOG_OBJECT (queue, "Adding %d buffers to be pushed",
+              gst_buffer_list_length (list));
+          gst_buffer_list_foreach (list, add_to_list, data);
+          gst_buffer_list_unref (list);
+        } else {
+          GST_LOG_OBJECT (queue, "Adding one buffer to be pushed");
+          gst_buffer_list_add (GST_BUFFER_LIST_CAST (data),
+              GST_BUFFER_CAST (new_data));
+        }
+      }
+    }
+
     if (!is_list) {
       GstBuffer *buffer;
 
@@ -1382,6 +1455,7 @@ next:
       }
 
       GST_QUEUE_MUTEX_UNLOCK (queue);
+      GST_LOG_OBJECT (queue, "Pushing buffer");
       result = gst_pad_push (queue->srcpad, buffer);
     } else {
       GstBufferList *buffer_list;
@@ -1395,6 +1469,8 @@ next:
       }
 
       GST_QUEUE_MUTEX_UNLOCK (queue);
+      GST_LOG_OBJECT (queue, "Pushing buffer list with %d buffers",
+          gst_buffer_list_length (buffer_list));
       result = gst_pad_push_list (queue->srcpad, buffer_list);
     }
 
@@ -1537,7 +1613,7 @@ gst_queue_loop (GstPad * pad)
   }
 
   if (!empty) {
-    ret = gst_queue_push_one (queue);
+    ret = gst_queue_push (queue);
     queue->srcresult = ret;
     if (ret != GST_FLOW_OK)
       goto out_flushing;
@@ -1842,6 +1918,9 @@ gst_queue_set_property (GObject * object,
     case PROP_FLUSH_ON_EOS:
       queue->flush_on_eos = g_value_get_boolean (value);
       break;
+    case PROP_GENERATE_BUFFER_LIST:
+      queue->generate_buffer_list = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1894,6 +1973,9 @@ gst_queue_get_property (GObject * object,
       break;
     case PROP_FLUSH_ON_EOS:
       g_value_set_boolean (value, queue->flush_on_eos);
+      break;
+    case PROP_GENERATE_BUFFER_LIST:
+      g_value_set_boolean (value, queue->generate_buffer_list);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);

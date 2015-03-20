@@ -138,6 +138,8 @@ struct _GstQueue {
 
   gboolean flush_on_eos; /* flush on EOS */
 
+  gboolean generate_buffer_list;
+
   /* TRUE if we schedule/unschedule tasks */
   gboolean schedule_task;
 };
