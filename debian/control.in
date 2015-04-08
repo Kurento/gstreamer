@@ -94,6 +94,7 @@ Depends: @GST_LIB@ (= ${binary:Version}),
          gir1.2-gstreamer-@GST_ABI@ (= ${binary:Version})
 Recommends: debhelper
 Suggests: @GST_PKGNAME@-doc
+Conflicts: libgstreamer1.0-dev
 Description: GStreamer core development files
  GStreamer is a streaming media framework, based on graphs of filters
  which operate on media data.  Applications using this library can do
