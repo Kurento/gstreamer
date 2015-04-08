@@ -1,4 +1,4 @@
-Source: gstreamer1.0
+Source: gstreamer1.5
 Section: libs
 Priority: optional
 Maintainer: Maintainers of GStreamer packages <pkg-gstreamer-maintainers@lists.alioth.debian.org>
@@ -43,15 +43,15 @@ Build-Depends-Indep: python (>= 2.2),
 Standards-Version: 3.9.3
 Homepage: http://gstreamer.freedesktop.org
 
-Package: libgstreamer1.0-0
+Package: libgstreamer1.5-0
 Architecture: any
 Multi-Arch: same
 Section: libs
 Pre-Depends: ${misc:Pre-Depends}
 Depends: ${shlibs:Depends},
          ${misc:Depends}
-Suggests: gstreamer1.0-tools,
-          gstreamer1.0-plugins-base
+Suggests: gstreamer1.5-tools,
+          gstreamer1.5-plugins-base
 Description: Core GStreamer libraries and elements
  GStreamer is a streaming media framework, based on graphs of filters
  which operate on media data.  Applications using this library can do
@@ -62,12 +62,12 @@ Description: Core GStreamer libraries and elements
  .
  This package contains the core library and elements.
 
-Package: libgstreamer1.0-0-dbg
+Package: libgstreamer1.5-0-dbg
 Architecture: any
 Multi-Arch: same
 Section: debug
 Priority: extra
-Depends: libgstreamer1.0-0 (= ${binary:Version}),
+Depends: libgstreamer1.5-0 (= ${binary:Version}),
          ${misc:Depends}
 Description: Core GStreamer libraries and elements
  GStreamer is a streaming media framework, based on graphs of filters
@@ -82,18 +82,18 @@ Description: Core GStreamer libraries and elements
  easier to interpret core dumps. The libraries are installed in
  /usr/lib/debug and are automatically used by gdb.
 
-Package: libgstreamer1.0-dev
+Package: libgstreamer1.5-dev
 Architecture: any
 Section: libdevel
-Depends: libgstreamer1.0-0 (= ${binary:Version}),
+Depends: libgstreamer1.5-0 (= ${binary:Version}),
          libc6-dev | libc-dev,
          pkg-config,
          libglib2.0-dev,
          ${shlibs:Depends},
          ${misc:Depends},
-         gir1.2-gstreamer-1.0 (= ${binary:Version})
+         gir1.2-gstreamer-1.5 (= ${binary:Version})
 Recommends: debhelper
-Suggests: gstreamer1.0-doc
+Suggests: gstreamer1.5-doc
 Description: GStreamer core development files
  GStreamer is a streaming media framework, based on graphs of filters
  which operate on media data.  Applications using this library can do
@@ -105,12 +105,12 @@ Description: GStreamer core development files
  This package contains development files for the core library and
  elements.
 
-Package: gstreamer1.0-doc
+Package: gstreamer1.5-doc
 Architecture: all
 Section: doc
 Depends: ${misc:Depends},
          libglib2.0-doc
-Recommends: libgstreamer1.0-dev (= ${source:Version})
+Recommends: libgstreamer1.5-dev (= ${source:Version})
 Description: GStreamer core documentation and manuals
  GStreamer is a streaming media framework, based on graphs of filters
  which operate on media data.  Applications using this library can do
@@ -125,14 +125,14 @@ Description: GStreamer core documentation and manuals
   * the GStreamer Plugin Writers Guide
   * Various API docs
 
-Package: gstreamer1.0-tools
+Package: gstreamer1.5-tools
 Architecture: any
 Section: utils
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          pkg-config,
-         libgstreamer1.0-0 (>= 1.5.0.1+git20150316)
-Suggests: gstreamer1.0-plugins-base
+         libgstreamer1.5-0 (>= 1.5.0.1)
+Suggests: gstreamer1.5-plugins-base
 Description: Tools for use with GStreamer
  GStreamer is a streaming media framework, based on graphs of filters
  which operate on media data.  Applications using this library can do
@@ -143,7 +143,7 @@ Description: Tools for use with GStreamer
  .
  This package contains versioned command-line tools for GStreamer.
 
-Package: gir1.2-gstreamer-1.0
+Package: gir1.2-gstreamer-1.5
 Section: introspection
 Architecture: any
 Depends: ${gir:Depends},

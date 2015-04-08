@@ -1,3 +1,9 @@
+gstreamer1.5 (1.5.0.1) experimental; urgency=medium
+
+  * Change package name to diferenciate between versions
+
+ -- Jose Antonio Santos Cadenas <santoscadenas@gmail.com>  Wed, 08 Apr 2015 12:03:01 +0200
+
 gstreamer1.0 (1.5.0.1+git20150316-1) experimental; urgency=medium
 
   * New upstream GIT snapshot.

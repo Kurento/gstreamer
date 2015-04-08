@@ -1,5 +1,5 @@
 debian/tmp/usr/include
-debian/tmp/usr/lib/*/gstreamer-1.0/include
+debian/tmp/usr/lib/*/gstreamer-@GST_ABI@/include
 debian/tmp/usr/lib/*/*.so
 debian/tmp/usr/lib/*/pkgconfig
 debian/tmp/usr/share/aclocal

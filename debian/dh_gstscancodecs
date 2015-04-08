@@ -21,8 +21,8 @@ codecs, demultiplexers and other media-handling components for
 gstreamer-based applications.
 
 dh_gstscancodecs generates substitution variable for debian/control,
-by scanning libraries /usr/lib/gstreamer-1.0/*.so and
-/usr/lib/$DEB_HOST_MULTIARCH/gstreamer-1.0/*.so.
+by scanning libraries /usr/lib/gstreamer-1.5/*.so and
+/usr/lib/$DEB_HOST_MULTIARCH/gstreamer-1.5/*.so.
 
 The generated substitution variables are
 
