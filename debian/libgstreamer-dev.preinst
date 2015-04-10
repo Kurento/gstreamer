@@ -6,10 +6,10 @@ add_diversion() {
     --divert "$1-gst0.10" "$1"
 }
 
-if [ "$1" = "upgrade" ] || [ "$1" = "install" ]; then
+#if [ "$1" = "upgrade" ] || [ "$1" = "install" ]; then
 #  add_diversion /usr/bin/dh_gstscancodecs
 #  add_diversion /usr/share/man/man1/dh_gstscancodecs.1.gz
-fi
+#fi
 
 #DEBHELPER#
 
