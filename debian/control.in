@@ -132,7 +132,7 @@ Section: utils
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          pkg-config,
-         @GST_LIB@ (>= @GST_VERSION@)
+         @GST_LIB@ (>= @GST_VERSION@~0)
 Suggests: @GST_PKGNAME@-plugins-base
 Description: Tools for use with GStreamer
  GStreamer is a streaming media framework, based on graphs of filters
