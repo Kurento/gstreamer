@@ -1,5 +1,5 @@
-Android.mk
 ABOUT-NLS
+INSTALL
 Makefile
 Makefile.in
 aclocal.m4

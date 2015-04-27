@@ -1,4 +1,4 @@
-AC_PREREQ([2.68])
+AC_PREREQ([2.69])
 
 dnl initialize autoconf
 dnl when going to/from release please set the nano (fourth number) right !
@@ -8,7 +8,7 @@ AC_INIT([GStreamer],[1.5.0.1],[http://bugzilla.gnome.org/enter_bug.cgi?product=G
 AG_GST_INIT
 
 dnl initialize automake (we require GNU make)
-AM_INIT_AUTOMAKE([-Wno-portability 1.11 no-dist-gzip dist-xz tar-ustar subdir-objects])
+AM_INIT_AUTOMAKE([-Wno-portability 1.14 no-dist-gzip dist-xz tar-ustar subdir-objects])
 
 dnl define PACKAGE_VERSION_* variables
 AS_VERSION
@@ -28,10 +28,8 @@ AM_MAINTAINER_MODE([enable])
 dnl sets host_* variables
 AC_CANONICAL_HOST
 
-dnl use pretty build output with automake >= 1.11
-m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])],
-  [AM_DEFAULT_VERBOSITY=1
-   AC_SUBST(AM_DEFAULT_VERBOSITY)])
+dnl use pretty build output by default
+AM_SILENT_RULES([yes])
 
 dnl GStreamer versioning, this is mostly informational
 GST_VERSION_MAJOR=$PACKAGE_VERSION_MAJOR

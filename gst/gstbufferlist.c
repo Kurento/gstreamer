@@ -274,7 +274,7 @@ gst_buffer_list_foreach (GstBufferList * list, GstBufferListFunc func,
  *
  * Returns: (transfer none) (nullable): the buffer at @idx in @group
  *     or %NULL when there is no buffer. The buffer remains valid as
- *     long as @list is valid.
+ *     long as @list is valid and buffer is not removed from the list.
  */
 GstBuffer *
 gst_buffer_list_get (GstBufferList * list, guint idx)
@@ -310,6 +310,7 @@ gst_buffer_list_insert (GstBufferList * list, gint idx, GstBuffer * buffer)
 
   g_return_if_fail (GST_IS_BUFFER_LIST (list));
   g_return_if_fail (buffer != NULL);
+  g_return_if_fail (gst_buffer_list_is_writable (list));
 
   if (idx == -1 && list->n_buffers < list->n_allocated) {
     list->buffers[list->n_buffers++] = buffer;
@@ -359,6 +360,7 @@ gst_buffer_list_remove (GstBufferList * list, guint idx, guint length)
   g_return_if_fail (GST_IS_BUFFER_LIST (list));
   g_return_if_fail (idx < list->n_buffers);
   g_return_if_fail (idx + length <= list->n_buffers);
+  g_return_if_fail (gst_buffer_list_is_writable (list));
 
   gst_buffer_list_remove_range_internal (list, idx, length, TRUE);
 }

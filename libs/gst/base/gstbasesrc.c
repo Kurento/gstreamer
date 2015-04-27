@@ -1706,12 +1706,6 @@ gst_base_src_perform_seek (GstBaseSrc * src, GstEvent * event, gboolean unlock)
       gst_element_post_message (GST_ELEMENT (src), message);
     }
 
-    /* for deriving a stop position for the playback segment from the seek
-     * segment, we must take the duration when the stop is not set */
-    /* FIXME: This is never used below */
-    if ((stop = seeksegment.stop) == -1)
-      stop = seeksegment.duration;
-
     src->priv->segment_pending = TRUE;
     src->priv->segment_seqnum = seqnum;
   }
@@ -2244,7 +2238,7 @@ gst_base_src_do_sync (GstBaseSrc * basesrc, GstBuffer * buffer)
     if (!GST_CLOCK_TIME_IS_VALID (dts)) {
       if (do_timestamp) {
         dts = running_time;
-      } else {
+      } else if (!GST_CLOCK_TIME_IS_VALID (pts)) {
         if (GST_CLOCK_TIME_IS_VALID (basesrc->segment.start)) {
           dts = basesrc->segment.start;
         } else {
@@ -3112,7 +3106,6 @@ gst_base_src_decide_allocation_default (GstBaseSrc * basesrc, GstQuery * query)
   return TRUE;
 
 config_failed:
-  gst_object_unref (pool);
   GST_ELEMENT_ERROR (basesrc, RESOURCE, SETTINGS,
       ("Failed to configure the buffer pool"),
       ("Configuration is most likely invalid, please report this issue."));

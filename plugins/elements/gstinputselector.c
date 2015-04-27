@@ -364,7 +364,8 @@ gst_selector_pad_new_cached_buffer (GstSelectorPad * selpad, GstBuffer * buffer)
 static void
 gst_selector_pad_free_cached_buffer (GstSelectorPadCachedBuffer * cached_buffer)
 {
-  gst_buffer_unref (cached_buffer->buffer);
+  if (cached_buffer->buffer)
+    gst_buffer_unref (cached_buffer->buffer);
   g_slice_free (GstSelectorPadCachedBuffer, cached_buffer);
 }
 
@@ -520,7 +521,16 @@ gst_selector_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
         GST_INPUT_SELECTOR_BROADCAST (sel);
       }
 
+      if (sel->eos_sent) {
+        gst_event_unref (event);
+        event = NULL;
+      } else {
+        /* prevent any further EOS event being pushed */
+        sel->eos_sent = TRUE;
+      }
+
       selpad->eos_sent = TRUE;
+
       GST_DEBUG_OBJECT (pad, "received EOS");
       break;
     case GST_EVENT_GAP:{
@@ -549,19 +559,21 @@ gst_selector_pad_event (GstPad * pad, GstObject * parent, GstEvent * event)
   GST_INPUT_SELECTOR_UNLOCK (sel);
   if (new_tags)
     g_object_notify (G_OBJECT (selpad), "tags");
-  if (forward) {
-    GST_DEBUG_OBJECT (pad, "forwarding event");
-    res = gst_pad_push_event (sel->srcpad, event);
-  } else {
-    /* If we aren't forwarding the event because the pad is not the
-     * active_sinkpad, then set the flag on the pad
-     * that says a segment needs sending if/when that pad is activated.
-     * For all other cases, we send the event immediately, which makes
-     * sparse streams and other segment updates work correctly downstream.
-     */
-    if (GST_EVENT_IS_STICKY (event))
-      selpad->events_pending = TRUE;
-    gst_event_unref (event);
+  if (event) {
+    if (forward) {
+      GST_DEBUG_OBJECT (pad, "forwarding event");
+      res = gst_pad_push_event (sel->srcpad, event);
+    } else {
+      /* If we aren't forwarding the event because the pad is not the
+       * active_sinkpad, then set the flag on the pad
+       * that says a segment needs sending if/when that pad is activated.
+       * For all other cases, we send the event immediately, which makes
+       * sparse streams and other segment updates work correctly downstream.
+       */
+      if (GST_EVENT_IS_STICKY (event))
+        selpad->events_pending = TRUE;
+      gst_event_unref (event);
+    }
   }
 
   return res;
@@ -970,6 +982,10 @@ gst_selector_pad_chain (GstPad * pad, GstObject * parent, GstBuffer * buf)
           GST_INPUT_SELECTOR_UNLOCK (sel);
           gst_selector_pad_chain (pad, parent, cached_buffer->buffer);
           GST_INPUT_SELECTOR_LOCK (sel);
+
+          /* We just passed the ownership of the buffer to the chain function */
+          cached_buffer->buffer = NULL;
+          gst_selector_pad_free_cached_buffer (cached_buffer);
 
           /* we may have cleaned up the queue in the meantime because of
            * old buffers */
@@ -1630,6 +1646,8 @@ gst_input_selector_reset (GstInputSelector * sel)
     gst_object_unref (sel->active_sinkpad);
     sel->active_sinkpad = NULL;
   }
+  sel->eos_sent = FALSE;
+
   /* reset each of our sinkpads state */
   for (walk = GST_ELEMENT_CAST (sel)->sinkpads; walk; walk = g_list_next (walk)) {
     GstSelectorPad *selpad = GST_SELECTOR_PAD_CAST (walk->data);
