@@ -46,7 +46,6 @@ export OIL_CPU_FLAGS
 
 PKGFILES=\
 	debian/$(gst_lib).install \
-	debian/$(gst_lib).symbols \
 	debian/$(gst_lib_dev).install \
 	debian/$(gst_lib_dev).preinst \
 	debian/$(gst_lib_dev).postrm \
@@ -100,10 +99,6 @@ debian/$(gst_lib).install: debian/libgstreamer.install debian/rules
 		sed 's/@GST_PKGNAME@/$(gst_pkgname)/g' | \
 		sed 's/@GST_LIB_PREFIX@/$(gst_lib_prefix)/g' \
 		> $@
-
-debian/$(gst_lib).symbols: debian/libgstreamer.symbols debian/rules
-	rm -f $@
-	cp -v $< $@
 
 debian/gir1.2-gstreamer-$(gst_abi).install: debian/gir1.2-gstreamer.install debian/rules
 	rm -f $@
