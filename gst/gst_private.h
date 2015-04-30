@@ -62,6 +62,8 @@ extern const char             g_log_domain_gstreamer[];
 
 #include "gstdatetime.h"
 
+#include "gsttracerutils.h"
+
 G_BEGIN_DECLS
 
 /* used by gstparse.c and grammar.y */
@@ -383,6 +385,27 @@ struct _GstTypeFindFactory {
 };
 
 struct _GstTypeFindFactoryClass {
+  GstPluginFeatureClass         parent;
+  /* <private> */
+
+  gpointer _gst_reserved[GST_PADDING];
+};
+
+struct _GstTracerFactory {
+  GstPluginFeature              feature;
+  /* <private> */
+
+  GType                         type;
+
+  /*
+  gpointer                      user_data;
+  GDestroyNotify                user_data_notify;
+  */
+
+  gpointer _gst_reserved[GST_PADDING];
+};
+
+struct _GstTracerFactoryClass {
   GstPluginFeatureClass         parent;
   /* <private> */
 

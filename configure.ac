@@ -467,6 +467,9 @@ AC_CHECK_FUNCS([strcasestr])
 AC_CHECK_FUNCS([gmtime_r])
 AC_CHECK_FUNCS([localtime_r])
 AC_CHECK_FUNCS([sigaction])
+AC_CHECK_FUNCS([getrusage])
+AM_CONDITIONAL(HAVE_GETRUSAGE, test "x$ac_cv_func_getrusage" = "xyes")
+AC_CHECK_HEADERS([sys/resource.h])
 
 dnl check for fseeko()
 AC_FUNC_FSEEKO
@@ -829,6 +832,7 @@ libs/gst/helpers/Makefile
 libs/gst/net/Makefile
 plugins/Makefile
 plugins/elements/Makefile
+plugins/tracers/Makefile
 po/Makefile.in
 tests/Makefile
 tests/benchmarks/Makefile
