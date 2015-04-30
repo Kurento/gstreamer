@@ -112,6 +112,8 @@ static GstStateChangeReturn gst_identity_change_state (GstElement * element,
     GstStateChange transition);
 static gboolean gst_identity_accept_caps (GstBaseTransform * base,
     GstPadDirection direction, GstCaps * caps);
+static gboolean gst_identity_query (GstBaseTransform * base,
+    GstPadDirection direction, GstQuery * query);
 
 static guint gst_identity_signals[LAST_SIGNAL] = { 0 };
 
@@ -125,6 +127,7 @@ gst_identity_finalize (GObject * object)
   identity = GST_IDENTITY (object);
 
   g_free (identity->last_message);
+  g_cond_clear (&identity->blocked_cond);
 
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
@@ -239,6 +242,7 @@ gst_identity_class_init (GstIdentityClass * klass)
   gstbasetrans_class->stop = GST_DEBUG_FUNCPTR (gst_identity_stop);
   gstbasetrans_class->accept_caps =
       GST_DEBUG_FUNCPTR (gst_identity_accept_caps);
+  gstbasetrans_class->query = gst_identity_query;
 }
 
 static void
@@ -256,6 +260,7 @@ gst_identity_init (GstIdentity * identity)
   identity->dump = DEFAULT_DUMP;
   identity->last_message = NULL;
   identity->signal_handoffs = DEFAULT_SIGNAL_HANDOFFS;
+  g_cond_init (&identity->blocked_cond);
 
   gst_base_transform_set_gap_aware (GST_BASE_TRANSFORM_CAST (identity), TRUE);
 }
@@ -264,6 +269,48 @@ static void
 gst_identity_notify_last_message (GstIdentity * identity)
 {
   g_object_notify_by_pspec ((GObject *) identity, pspec_last_message);
+}
+
+static GstFlowReturn
+gst_identity_do_sync (GstIdentity * identity, GstClockTime running_time)
+{
+  GstFlowReturn ret = GST_FLOW_OK;
+
+  if (identity->sync &&
+      GST_BASE_TRANSFORM_CAST (identity)->segment.format == GST_FORMAT_TIME) {
+    GstClock *clock;
+
+    GST_OBJECT_LOCK (identity);
+
+    while (identity->blocked)
+      g_cond_wait (&identity->blocked_cond, GST_OBJECT_GET_LOCK (identity));
+
+
+    if ((clock = GST_ELEMENT (identity)->clock)) {
+      GstClockReturn cret;
+      GstClockTime timestamp;
+
+      timestamp = running_time + GST_ELEMENT (identity)->base_time +
+          identity->upstream_latency;
+
+      /* save id if we need to unlock */
+      identity->clock_id = gst_clock_new_single_shot_id (clock, timestamp);
+      GST_OBJECT_UNLOCK (identity);
+
+      cret = gst_clock_id_wait (identity->clock_id, NULL);
+
+      GST_OBJECT_LOCK (identity);
+      if (identity->clock_id) {
+        gst_clock_id_unref (identity->clock_id);
+        identity->clock_id = NULL;
+      }
+      if (cret == GST_CLOCK_UNSCHEDULED)
+        ret = GST_FLOW_EOS;
+    }
+    GST_OBJECT_UNLOCK (identity);
+  }
+
+  return ret;
 }
 
 static gboolean
@@ -318,8 +365,7 @@ gst_identity_sink_event (GstBaseTransform * trans, GstEvent * event)
     }
   }
 
-  /* also transform GAP timestamp similar to buffer timestamps */
-  if (identity->single_segment && (GST_EVENT_TYPE (event) == GST_EVENT_GAP) &&
+  if (GST_EVENT_TYPE (event) == GST_EVENT_GAP &&
       trans->have_segment && trans->segment.format == GST_FORMAT_TIME) {
     GstClockTime start, dur;
 
@@ -327,8 +373,14 @@ gst_identity_sink_event (GstBaseTransform * trans, GstEvent * event)
     if (GST_CLOCK_TIME_IS_VALID (start)) {
       start = gst_segment_to_running_time (&trans->segment,
           GST_FORMAT_TIME, start);
-      gst_event_unref (event);
-      event = gst_event_new_gap (start, dur);
+
+      gst_identity_do_sync (identity, start);
+
+      /* also transform GAP timestamp similar to buffer timestamps */
+      if (identity->single_segment) {
+        gst_event_unref (event);
+        event = gst_event_new_gap (start, dur);
+      }
     }
   }
 
@@ -502,8 +554,9 @@ gst_identity_transform_ip (GstBaseTransform * trans, GstBuffer * buf)
 {
   GstFlowReturn ret = GST_FLOW_OK;
   GstIdentity *identity = GST_IDENTITY (trans);
-  GstClockTime runtimestamp = G_GINT64_CONSTANT (0);
-  GstClockTime ts, duration;
+  GstClockTime rundts = GST_CLOCK_TIME_NONE;
+  GstClockTime runpts = GST_CLOCK_TIME_NONE;
+  GstClockTime ts, duration, runtimestamp;
   gsize size;
 
   size = gst_buffer_get_size (buf);
@@ -553,36 +606,20 @@ gst_identity_transform_ip (GstBaseTransform * trans, GstBuffer * buf)
   if (identity->signal_handoffs)
     g_signal_emit (identity, gst_identity_signals[SIGNAL_HANDOFF], 0, buf);
 
-  if (trans->segment.format == GST_FORMAT_TIME)
-    runtimestamp = gst_segment_to_running_time (&trans->segment,
-        GST_FORMAT_TIME, GST_BUFFER_TIMESTAMP (buf));
-
-  if ((identity->sync) && (trans->segment.format == GST_FORMAT_TIME)) {
-    GstClock *clock;
-
-    GST_OBJECT_LOCK (identity);
-    if ((clock = GST_ELEMENT (identity)->clock)) {
-      GstClockReturn cret;
-      GstClockTime timestamp;
-
-      timestamp = runtimestamp + GST_ELEMENT (identity)->base_time;
-
-      /* save id if we need to unlock */
-      identity->clock_id = gst_clock_new_single_shot_id (clock, timestamp);
-      GST_OBJECT_UNLOCK (identity);
-
-      cret = gst_clock_id_wait (identity->clock_id, NULL);
-
-      GST_OBJECT_LOCK (identity);
-      if (identity->clock_id) {
-        gst_clock_id_unref (identity->clock_id);
-        identity->clock_id = NULL;
-      }
-      if (cret == GST_CLOCK_UNSCHEDULED)
-        ret = GST_FLOW_EOS;
-    }
-    GST_OBJECT_UNLOCK (identity);
+  if (trans->segment.format == GST_FORMAT_TIME) {
+    rundts = gst_segment_to_running_time (&trans->segment,
+        GST_FORMAT_TIME, GST_BUFFER_DTS (buf));
+    runpts = gst_segment_to_running_time (&trans->segment,
+        GST_FORMAT_TIME, GST_BUFFER_PTS (buf));
   }
+
+  if (GST_CLOCK_TIME_IS_VALID (rundts))
+    runtimestamp = rundts;
+  else if (GST_CLOCK_TIME_IS_VALID (runpts))
+    runtimestamp = runpts;
+  else
+    runtimestamp = 0;
+  ret = gst_identity_do_sync (identity, runtimestamp);
 
   identity->offset += size;
 
@@ -591,7 +628,8 @@ gst_identity_transform_ip (GstBaseTransform * trans, GstBuffer * buf)
 
   if (identity->single_segment && (trans->segment.format == GST_FORMAT_TIME)
       && (ret == GST_FLOW_OK)) {
-    GST_BUFFER_PTS (buf) = GST_BUFFER_DTS (buf) = runtimestamp;
+    GST_BUFFER_DTS (buf) = rundts;
+    GST_BUFFER_PTS (buf) = runpts;
     GST_BUFFER_OFFSET (buf) = GST_CLOCK_TIME_NONE;
     GST_BUFFER_OFFSET_END (buf) = GST_CLOCK_TIME_NONE;
   }
@@ -779,18 +817,69 @@ gst_identity_accept_caps (GstBaseTransform * base,
   return ret;
 }
 
+static gboolean
+gst_identity_query (GstBaseTransform * base, GstPadDirection direction,
+    GstQuery * query)
+{
+  GstIdentity *identity;
+  gboolean ret;
+
+  identity = GST_IDENTITY (base);
+
+  ret = GST_BASE_TRANSFORM_CLASS (parent_class)->query (base, direction, query);
+
+  if (GST_QUERY_TYPE (query) == GST_QUERY_LATENCY) {
+    gboolean live = FALSE;
+    GstClockTime min = 0, max = 0;
+
+    if (ret) {
+      gst_query_parse_latency (query, &live, &min, &max);
+
+      if (identity->sync && max < min) {
+        GST_ELEMENT_WARNING (base, CORE, CLOCK, (NULL),
+            ("Impossible to configure latency before identity sync=true:"
+                " max %" GST_TIME_FORMAT " < min %"
+                GST_TIME_FORMAT ". Add queues or other buffering elements.",
+                GST_TIME_ARGS (max), GST_TIME_ARGS (min)));
+      }
+    }
+
+    /* Ignore the upstream latency if it is not live */
+    GST_OBJECT_LOCK (identity);
+    if (live)
+      identity->upstream_latency = min;
+    else
+      identity->upstream_latency = 0;
+    GST_OBJECT_UNLOCK (identity);
+
+    gst_query_set_latency (query, live || identity->sync, min, max);
+    ret = TRUE;
+  }
+  return ret;
+}
+
 static GstStateChangeReturn
 gst_identity_change_state (GstElement * element, GstStateChange transition)
 {
   GstStateChangeReturn ret;
   GstIdentity *identity = GST_IDENTITY (element);
+  gboolean no_preroll = FALSE;
 
   switch (transition) {
     case GST_STATE_CHANGE_NULL_TO_READY:
       break;
     case GST_STATE_CHANGE_READY_TO_PAUSED:
+      GST_OBJECT_LOCK (identity);
+      identity->blocked = TRUE;
+      GST_OBJECT_UNLOCK (identity);
+      if (identity->sync)
+        no_preroll = TRUE;
       break;
     case GST_STATE_CHANGE_PAUSED_TO_PLAYING:
+      GST_OBJECT_LOCK (identity);
+      identity->blocked = FALSE;
+      g_cond_broadcast (&identity->blocked_cond);
+      GST_OBJECT_UNLOCK (identity);
       break;
     case GST_STATE_CHANGE_PAUSED_TO_READY:
       GST_OBJECT_LOCK (identity);
@@ -800,6 +889,8 @@ gst_identity_change_state (GstElement * element, GstStateChange transition)
         gst_clock_id_unref (identity->clock_id);
         identity->clock_id = NULL;
       }
+      identity->blocked = FALSE;
+      g_cond_broadcast (&identity->blocked_cond);
       GST_OBJECT_UNLOCK (identity);
       break;
     default:
@@ -810,6 +901,12 @@ gst_identity_change_state (GstElement * element, GstStateChange transition)
 
   switch (transition) {
     case GST_STATE_CHANGE_PLAYING_TO_PAUSED:
+      GST_OBJECT_LOCK (identity);
+      identity->upstream_latency = 0;
+      identity->blocked = TRUE;
+      GST_OBJECT_UNLOCK (identity);
+      if (identity->sync)
+        no_preroll = TRUE;
       break;
     case GST_STATE_CHANGE_PAUSED_TO_READY:
       break;
@@ -818,6 +915,9 @@ gst_identity_change_state (GstElement * element, GstStateChange transition)
     default:
       break;
   }
+
+  if (no_preroll && ret == GST_STATE_CHANGE_SUCCESS)
+    ret = GST_STATE_CHANGE_NO_PREROLL;
 
   return ret;
 }
