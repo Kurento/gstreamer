@@ -137,6 +137,9 @@ struct _GstQueue {
   gboolean last_query;
 
   gboolean flush_on_eos; /* flush on EOS */
+
+  /* TRUE if we schedule/unschedule tasks */
+  gboolean schedule_task;
 };
 
 struct _GstQueueClass {

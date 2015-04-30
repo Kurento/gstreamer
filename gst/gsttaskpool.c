@@ -1,5 +1,6 @@
 /* GStreamer
  * Copyright (C) 2009 Wim Taymans <wim.taymans@gmail.com>
+ * Copyright (C) 2015 Sebastian Dröge <sebastian@centricular.com>
  *
  * gsttaskpool.c: Pool for streaming threads
  *
@@ -38,14 +39,28 @@
 GST_DEBUG_CATEGORY_STATIC (taskpool_debug);
 #define GST_CAT_DEFAULT (taskpool_debug)
 
-#ifndef GST_DISABLE_GST_DEBUG
+struct _GstTaskPoolPrivate
+{
+  gint max_threads;
+  gboolean exclusive;
+
+  gint need_schedule_thread;
+  GMainContext *schedule_context;
+  GMainLoop *schedule_loop;
+  GThread *schedule_thread;
+  GMutex schedule_lock;
+  GCond schedule_cond;
+};
+
 static void gst_task_pool_finalize (GObject * object);
-#endif
 
 #define _do_init \
 { \
   GST_DEBUG_CATEGORY_INIT (taskpool_debug, "taskpool", 0, "Thread pool"); \
 }
+
+#define GST_TASK_POOL_GET_PRIVATE(obj)  \
+   (G_TYPE_INSTANCE_GET_PRIVATE ((obj), GST_TYPE_TASK_POOL, GstTaskPoolPrivate))
 
 G_DEFINE_TYPE_WITH_CODE (GstTaskPool, gst_task_pool, GST_TYPE_OBJECT, _do_init);
 
@@ -72,7 +87,9 @@ static void
 default_prepare (GstTaskPool * pool, GError ** error)
 {
   GST_OBJECT_LOCK (pool);
-  pool->pool = g_thread_pool_new ((GFunc) default_func, pool, -1, FALSE, NULL);
+  pool->pool =
+      g_thread_pool_new ((GFunc) default_func, pool, pool->priv->max_threads,
+      pool->priv->exclusive, NULL);
   GST_OBJECT_UNLOCK (pool);
 }
 
@@ -126,9 +143,9 @@ gst_task_pool_class_init (GstTaskPoolClass * klass)
   gobject_class = (GObjectClass *) klass;
   gsttaskpool_class = (GstTaskPoolClass *) klass;
 
-#ifndef GST_DISABLE_GST_DEBUG
+  g_type_class_add_private (gobject_class, sizeof (GstTaskPoolPrivate));
+
   gobject_class->finalize = gst_task_pool_finalize;
-#endif
 
   gsttaskpool_class->prepare = default_prepare;
   gsttaskpool_class->cleanup = default_cleanup;
@@ -139,19 +156,35 @@ gst_task_pool_class_init (GstTaskPoolClass * klass)
 static void
 gst_task_pool_init (GstTaskPool * pool)
 {
+  pool->priv = GST_TASK_POOL_GET_PRIVATE (pool);
+
+  pool->priv->max_threads = -1;
+  pool->priv->exclusive = FALSE;
+
+  pool->priv->need_schedule_thread = 0;
+  pool->priv->schedule_context = NULL;
+  pool->priv->schedule_loop = NULL;
+  pool->priv->schedule_thread = NULL;
+  g_mutex_init (&pool->priv->schedule_lock);
+  g_cond_init (&pool->priv->schedule_cond);
+
   /* clear floating flag */
   gst_object_ref_sink (pool);
 }
 
-#ifndef GST_DISABLE_GST_DEBUG
 static void
 gst_task_pool_finalize (GObject * object)
 {
-  GST_DEBUG ("taskpool %p finalize", object);
+  GstTaskPool *pool = GST_TASK_POOL (object);
+
+  GST_DEBUG_OBJECT (pool, "taskpool finalize");
+
+  g_mutex_clear (&pool->priv->schedule_lock);
+  g_cond_clear (&pool->priv->schedule_cond);
 
   G_OBJECT_CLASS (gst_task_pool_parent_class)->finalize (object);
 }
-#endif
+
 /**
  * gst_task_pool_new:
  *
@@ -166,6 +199,19 @@ gst_task_pool_new (void)
   GstTaskPool *pool;
 
   pool = g_object_newv (GST_TYPE_TASK_POOL, 0, NULL);
+
+  return pool;
+}
+
+GstTaskPool *
+gst_task_pool_new_full (gint max_threads, gboolean exclusive)
+{
+  GstTaskPool *pool;
+
+  pool = g_object_newv (GST_TYPE_TASK_POOL, 0, NULL);
+
+  pool->priv->max_threads = max_threads;
+  pool->priv->exclusive = exclusive;
 
   return pool;
 }
@@ -269,4 +315,112 @@ gst_task_pool_join (GstTaskPool * pool, gpointer id)
 
   if (klass->join)
     klass->join (pool, id);
+}
+
+static gboolean
+main_loop_running_cb (gpointer user_data)
+{
+  GstTaskPool *pool = GST_TASK_POOL (user_data);
+
+  g_mutex_lock (&pool->priv->schedule_lock);
+  g_cond_signal (&pool->priv->schedule_cond);
+  g_mutex_unlock (&pool->priv->schedule_lock);
+
+  return G_SOURCE_REMOVE;
+}
+
+static gpointer
+gst_task_pool_schedule_func (gpointer data)
+{
+  GstTaskPool *pool = GST_TASK_POOL (data);
+  GSource *source;
+
+  source = g_idle_source_new ();
+  g_source_set_callback (source, (GSourceFunc) main_loop_running_cb, pool,
+      NULL);
+  g_source_attach (source, pool->priv->schedule_context);
+  g_source_unref (source);
+
+  g_main_loop_run (pool->priv->schedule_loop);
+
+  return NULL;
+}
+
+gboolean
+gst_task_pool_need_schedule_thread (GstTaskPool * pool, gboolean needed)
+{
+  gboolean ret;
+
+  g_return_val_if_fail (GST_IS_TASK_POOL (pool), FALSE);
+  g_return_val_if_fail (needed || pool->priv->need_schedule_thread > 0, FALSE);
+
+  /* We don't allow this for the default pool */
+  if (pool == gst_task_pool_get_default ()) {
+    gst_object_unref (pool);
+    return FALSE;
+  }
+
+  g_mutex_lock (&pool->priv->schedule_lock);
+  if (needed) {
+    ret = TRUE;
+    if (pool->priv->need_schedule_thread == 0) {
+      pool->priv->schedule_context = g_main_context_new ();
+      pool->priv->schedule_loop =
+          g_main_loop_new (pool->priv->schedule_context, FALSE);
+
+      pool->priv->schedule_thread =
+          g_thread_new (GST_OBJECT_NAME (pool), gst_task_pool_schedule_func,
+          pool);
+
+      g_cond_wait (&pool->priv->schedule_cond, &pool->priv->schedule_lock);
+    }
+    pool->priv->need_schedule_thread++;
+  } else {
+    ret = FALSE;
+    pool->priv->need_schedule_thread--;
+    if (pool->priv->need_schedule_thread == 0) {
+      g_main_loop_quit (pool->priv->schedule_loop);
+      g_thread_join (pool->priv->schedule_thread);
+      g_main_loop_unref (pool->priv->schedule_loop);
+      pool->priv->schedule_loop = NULL;
+      g_main_context_unref (pool->priv->schedule_context);
+      pool->priv->schedule_context = NULL;
+      pool->priv->schedule_thread = NULL;
+    }
+  }
+  g_mutex_unlock (&pool->priv->schedule_lock);
+
+  return ret;
+}
+
+GMainContext *
+gst_task_pool_get_schedule_context (GstTaskPool * pool)
+{
+  GMainContext *context;
+
+  g_return_val_if_fail (GST_IS_TASK_POOL (pool), NULL);
+  g_return_val_if_fail (pool->priv->need_schedule_thread > 0, NULL);
+
+  g_mutex_lock (&pool->priv->schedule_lock);
+  context = pool->priv->schedule_context;
+  if (context)
+    g_main_context_ref (context);
+  g_mutex_unlock (&pool->priv->schedule_lock);
+
+  return context;
+}
+
+GstTaskPool *
+gst_task_pool_get_default (void)
+{
+  static GstTaskPool *pool = NULL;
+
+  if (g_once_init_enter (&pool)) {
+    GstTaskPool *_pool = gst_task_pool_new ();
+
+    gst_task_pool_prepare (_pool, NULL);
+    g_once_init_leave (&pool, _pool);
+  }
+
+  return gst_object_ref (pool);
 }

@@ -194,6 +194,12 @@ gboolean        gst_task_pause          (GstTask *task);
 
 gboolean        gst_task_join           (GstTask *task);
 
+gboolean        gst_task_get_scheduleable(GstTask *task);
+gboolean        gst_task_set_scheduleable(GstTask *task, gboolean scheduleable);
+
+void            gst_task_schedule       (GstTask *task);
+void            gst_task_unschedule     (GstTask *task);
+
 G_END_DECLS
 
 #endif /* __GST_TASK_H__ */
