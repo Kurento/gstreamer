@@ -1707,11 +1707,12 @@ gst_object_set_name
 gst_object_get_name
 gst_object_set_parent
 gst_object_get_parent
-gst_object_has_parent
+gst_object_has_as_parent
 gst_object_unparent
 gst_object_default_deep_notify
 gst_object_default_error
 gst_object_check_uniqueness
+gst_object_has_as_ancestor
 gst_object_has_ancestor
 gst_object_ref
 gst_object_unref
