@@ -89,6 +89,13 @@ GST_START_TEST (test_submemory)
   gst_memory_unref (sub);
 
   gst_memory_unmap (memory, &info);
+
+  /* test write map + share failure */
+  fail_unless (gst_memory_map (memory, &info, GST_MAP_WRITE));
+  sub = gst_memory_share (memory, 0, 4);
+  fail_unless (sub == NULL, "share with a write map succeeded");
+
+  gst_memory_unmap (memory, &info);
   gst_memory_unref (memory);
 }
 
@@ -550,6 +557,46 @@ GST_START_TEST (test_alloc_params)
 
 GST_END_TEST;
 
+GST_START_TEST (test_lock)
+{
+  GstMemory *mem;
+
+  mem = gst_allocator_alloc (NULL, 10, NULL);
+  fail_unless (mem != NULL);
+
+  /* test exclusivity */
+  fail_unless (gst_memory_lock (mem,
+          GST_LOCK_FLAG_WRITE | GST_LOCK_FLAG_EXCLUSIVE));
+  fail_if (gst_memory_lock (mem, GST_LOCK_FLAG_EXCLUSIVE));
+  fail_unless (gst_memory_lock (mem, GST_LOCK_FLAG_WRITE));
+  gst_memory_unlock (mem, GST_LOCK_FLAG_WRITE | GST_LOCK_FLAG_EXCLUSIVE);
+  gst_memory_unlock (mem, GST_LOCK_FLAG_WRITE);
+
+  /* no lock here */
+
+  fail_unless (gst_memory_lock (mem,
+          GST_LOCK_FLAG_READ | GST_LOCK_FLAG_EXCLUSIVE));
+  fail_unless (gst_memory_lock (mem,
+          GST_LOCK_FLAG_READ | GST_LOCK_FLAG_EXCLUSIVE));
+  gst_memory_unlock (mem, GST_LOCK_FLAG_READ | GST_LOCK_FLAG_EXCLUSIVE);
+  gst_memory_unlock (mem, GST_LOCK_FLAG_READ | GST_LOCK_FLAG_EXCLUSIVE);
+
+  /* no lock here */
+
+  fail_unless (gst_memory_lock (mem,
+          GST_LOCK_FLAG_READWRITE | GST_LOCK_FLAG_EXCLUSIVE));
+  fail_unless (gst_memory_lock (mem, GST_LOCK_FLAG_READ));
+  fail_if (gst_memory_lock (mem, GST_LOCK_FLAG_READ | GST_LOCK_FLAG_EXCLUSIVE));
+  fail_if (gst_memory_lock (mem, GST_LOCK_FLAG_EXCLUSIVE));
+  fail_unless (gst_memory_lock (mem, GST_LOCK_FLAG_WRITE));
+  gst_memory_unlock (mem, GST_LOCK_FLAG_WRITE);
+  gst_memory_unlock (mem, GST_LOCK_FLAG_READ);
+  gst_memory_unlock (mem, GST_LOCK_FLAG_READWRITE | GST_LOCK_FLAG_EXCLUSIVE);
+
+  gst_memory_unref (mem);
+}
+
+GST_END_TEST;
 
 static Suite *
 gst_memory_suite (void)
@@ -569,6 +616,7 @@ gst_memory_suite (void)
   tcase_add_test (tc_chain, test_map_nested);
   tcase_add_test (tc_chain, test_map_resize);
   tcase_add_test (tc_chain, test_alloc_params);
+  tcase_add_test (tc_chain, test_lock);
 
   return s;
 }

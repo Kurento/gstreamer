@@ -123,6 +123,7 @@ gst_memory_init (GstMemory * mem, GstMemoryFlags flags,
 
   mem->allocator = gst_object_ref (allocator);
   if (parent) {
+    /* FIXME 2.0: this can fail if the memory is already write locked */
     gst_memory_lock (parent, GST_LOCK_FLAG_EXCLUSIVE);
     gst_memory_ref (parent);
   }
@@ -337,7 +338,10 @@ gst_memory_unmap (GstMemory * mem, GstMapInfo * info)
   g_return_if_fail (info != NULL);
   g_return_if_fail (info->memory == mem);
 
-  mem->allocator->mem_unmap (mem);
+  if (mem->allocator->mem_unmap_full)
+    mem->allocator->mem_unmap_full (mem, info->flags);
+  else
+    mem->allocator->mem_unmap (mem);
   gst_memory_unlock (mem, (GstLockFlags) info->flags);
 }
 
@@ -387,7 +391,27 @@ gst_memory_share (GstMemory * mem, gssize offset, gssize size)
   g_return_val_if_fail (!GST_MEMORY_FLAG_IS_SET (mem, GST_MEMORY_FLAG_NO_SHARE),
       NULL);
 
+  /* whether we can lock the memory exclusively */
+  /* in order to maintain backwards compatibility by not requiring subclasses
+   * to lock the memory themselves and propagate the possible failure in their
+   * mem_share implementation */
+  /* FIXME 2.0: remove and fix gst_memory_init() and/or all memory subclasses
+   * to propagate this failure case */
+  if (!gst_memory_lock (mem, GST_LOCK_FLAG_EXCLUSIVE))
+    return NULL;
+
+  /* double lock to ensure we are not mapped writable without an
+   * exclusive lock. */
+  if (!gst_memory_lock (mem, GST_LOCK_FLAG_EXCLUSIVE)) {
+    gst_memory_unlock (mem, GST_LOCK_FLAG_EXCLUSIVE);
+    return NULL;
+  }
+
   shared = mem->allocator->mem_share (mem, offset, size);
+
+  /* unlocking before calling the subclass would be racy */
+  gst_memory_unlock (mem, GST_LOCK_FLAG_EXCLUSIVE);
+  gst_memory_unlock (mem, GST_LOCK_FLAG_EXCLUSIVE);
 
   return shared;
 }
