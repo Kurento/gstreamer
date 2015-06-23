@@ -113,6 +113,7 @@ EXPORTS
 	gst_bin_sync_children_states
 	gst_bitmask_get_type
 	gst_buffer_add_meta
+	gst_buffer_add_parent_buffer_meta
 	gst_buffer_add_protection_meta
 	gst_buffer_append
 	gst_buffer_append_memory
@@ -903,6 +904,9 @@ EXPORTS
 	gst_pad_use_fixed_caps
 	gst_param_spec_fraction
 	gst_param_spec_fraction_get_type
+	gst_parent_buffer_meta_api_get_type
+	gst_parent_buffer_meta_debug DATA
+	gst_parent_buffer_meta_get_info
 	gst_parse_bin_from_description
 	gst_parse_bin_from_description_full
 	gst_parse_context_free
@@ -922,12 +926,14 @@ EXPORTS
 	gst_pipeline_get_bus
 	gst_pipeline_get_clock
 	gst_pipeline_get_delay
+	gst_pipeline_get_latency
 	gst_pipeline_get_pipeline_clock
 	gst_pipeline_get_type
 	gst_pipeline_new
 	gst_pipeline_set_auto_flush_bus
 	gst_pipeline_set_clock
 	gst_pipeline_set_delay
+	gst_pipeline_set_latency
 	gst_pipeline_use_clock
 	gst_plugin_add_dependency
 	gst_plugin_add_dependency_simple
@@ -1119,11 +1125,13 @@ EXPORTS
 	gst_resource_error_get_type
 	gst_resource_error_quark
 	gst_sample_get_buffer
+	gst_sample_get_buffer_list
 	gst_sample_get_caps
 	gst_sample_get_info
 	gst_sample_get_segment
 	gst_sample_get_type
 	gst_sample_new
+	gst_sample_set_buffer_list
 	gst_scheduling_flags_get_type
 	gst_search_mode_get_type
 	gst_seek_flags_get_type

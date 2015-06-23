@@ -58,6 +58,7 @@ gst_direct_control_binding_get_type
 <TITLE>GstTimedValueControlSource</TITLE>
 <INCLUDE>libs/controller/gsttimedvaluecontrolsource.h</INCLUDE>
 GstTimedValueControlSource
+GstControlPoint
 gst_timed_value_control_source_find_control_point_iter
 gst_timed_value_control_source_set
 gst_timed_value_control_source_set_from_list
@@ -361,7 +362,7 @@ gst_base_transform_get_allocator
 gst_base_transform_get_buffer_pool
 gst_base_transform_reconfigure_sink
 gst_base_transform_reconfigure_src
-gst_base_transform_update_src
+gst_base_transform_update_src_caps
 
 GST_BASE_TRANSFORM_SINK_NAME
 GST_BASE_TRANSFORM_SRC_NAME
@@ -710,6 +711,9 @@ GST_COLLECT_PADS_GET_STREAM_LOCK
 GST_COLLECT_PADS_STREAM_LOCK
 GST_COLLECT_PADS_STREAM_UNLOCK
 
+GST_COLLECT_PADS_DTS
+GST_COLLECT_PADS_DTS_IS_VALID
+
 gst_collect_pads_new
 
 gst_collect_pads_add_pad
@@ -761,6 +765,7 @@ gst_collect_pads_get_type
 <FILE>gstflowcombiner</FILE>
 <TITLE>GstFlowCombiner</TITLE>
 <INCLUDE>gst/base/gstflowcombiner.h</INCLUDE>
+GstFlowCombiner
 gst_flow_combiner_new
 gst_flow_combiner_free
 gst_flow_combiner_update_flow
@@ -954,6 +959,8 @@ gst_net_time_provider_get_type
 <FILE>gstptpclock</FILE>
 <TITLE>GstPtpClock</TITLE>
 <INCLUDE>gst/net/net.h</INCLUDE>
+GST_PTP_CLOCK_ID_NONE
+
 gst_ptp_init
 gst_ptp_deinit
 gst_ptp_is_initialized
@@ -962,6 +969,7 @@ gst_ptp_is_supported
 GstPtpClock
 gst_ptp_clock_new
 
+GstPtpStatisticsCallback
 gst_ptp_statistics_callback_add
 gst_ptp_statistics_callback_remove
 <SUBSECTION Standard>

@@ -25,6 +25,7 @@
 #define __GST_SAMPLE_H__
 
 #include <gst/gstbuffer.h>
+#include <gst/gstbufferlist.h>
 #include <gst/gstcaps.h>
 #include <gst/gstsegment.h>
 
@@ -58,6 +59,8 @@ GstBuffer *          gst_sample_get_buffer    (GstSample *sample);
 GstCaps *            gst_sample_get_caps      (GstSample *sample);
 GstSegment *         gst_sample_get_segment   (GstSample *sample);
 const GstStructure * gst_sample_get_info      (GstSample *sample);
+GstBufferList *      gst_sample_get_buffer_list (GstSample *sample);
+void                 gst_sample_set_buffer_list (GstSample *sample, GstBufferList *buffer_list);
 
 /* refcounting */
 /**

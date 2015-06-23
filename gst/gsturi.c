@@ -27,8 +27,8 @@
  * SECTION:gsturihandler
  * @short_description: Interface to ease URI handling in plugins.
  *
- * The URIHandler is an interface that is implemented by Source and Sink
- * #GstElement to simplify then handling of URI.
+ * The #GstURIHandler is an interface that is implemented by Source and Sink
+ * #GstElement to unify handling of URI.
  *
  * An application can use the following functions to quickly get an element
  * that handles the given URI for reading or writing
@@ -1441,7 +1441,7 @@ _gst_uri_string_to_table (const gchar * str, const gchar * part_sep,
  *                      elements.
  * @query: (nullable): The query string for the new URI with '&' separating
  *                       query elements. Elements containing '&' characters
- *                       should encode them as "%26".
+ *                       should encode them as "&percnt;26".
  * @fragment: (nullable): The fragment name for the new URI.
  *
  * Creates a new #GstUri object with the given URI parts. The path and query
@@ -1483,7 +1483,7 @@ gst_uri_new (const gchar * scheme, const gchar * userinfo, const gchar * host,
  *                      elements.
  * @query: (nullable): The query string for the new URI with '&' separating
  *                       query elements. Elements containing '&' characters
- *                       should encode them as "%26".
+ *                       should encode them as "&percnt;26".
  * @fragment: (nullable): The fragment name for the new URI.
  *
  * Like gst_uri_new(), but joins the new URI onto a base URI.
@@ -1946,7 +1946,7 @@ gst_uri_make_writable (GstUri * uri)
  *
  * Convert the URI to a string.
  *
- * Returns the URI as held in this object as a gchar* %NUL terminated string.
+ * Returns the URI as held in this object as a #gchar* nul-terminated string.
  * The caller should g_free() the string once they are finished with it.
  * The string is put together as described in RFC 3986.
  *
