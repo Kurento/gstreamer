@@ -655,9 +655,9 @@ gst_adapter_flush (GstAdapter * adapter, gsize flush)
   gst_adapter_flush_unchecked (adapter, flush);
 }
 
-/* internal function, nbytes should be flushed after calling this function */
+/* internal function, nbytes should be flushed if needed after calling this function */
 static guint8 *
-gst_adapter_take_internal (GstAdapter * adapter, gsize nbytes)
+gst_adapter_get_internal (GstAdapter * adapter, gsize nbytes)
 {
   guint8 *data;
   gsize toreuse, tocopy;
@@ -727,7 +727,7 @@ gst_adapter_take (GstAdapter * adapter, gsize nbytes)
   if (G_UNLIKELY (nbytes > adapter->size))
     return NULL;
 
-  data = gst_adapter_take_internal (adapter, nbytes);
+  data = gst_adapter_get_internal (adapter, nbytes);
 
   gst_adapter_flush_unchecked (adapter, nbytes);
 
@@ -735,25 +735,13 @@ gst_adapter_take (GstAdapter * adapter, gsize nbytes)
 }
 
 /**
- * gst_adapter_take_buffer_fast:
+ * gst_adapter_get_buffer_fast:
  * @adapter:  a #GstAdapter
- * @nbytes: the number of bytes to take
+ * @nbytes: the number of bytes to get
  *
- * Returns a #GstBuffer containing the first @nbytes of the @adapter.
- * The returned bytes will be flushed from the adapter.  This function
- * is potentially more performant than gst_adapter_take_buffer() since
- * it can reuse the memory in pushed buffers by subbuffering or
- * merging. Unlike gst_adapter_take_buffer(), the returned buffer may
- * be composed of multiple non-contiguous #GstMemory objects, no
- * copies are made.
- *
- * Note that no assumptions should be made as to whether certain buffer
- * flags such as the DISCONT flag are set on the returned buffer, or not.
- * The caller needs to explicitly set or unset flags that should be set or
- * unset.
- *
- * This function can return buffer up to the return value of
- * gst_adapter_available() without making copies if possible.
+ * Returns a #GstBuffer containing the first @nbytes of the @adapter, but
+ * does not flush them from the adapter. See gst_adapter_take_buffer_fast()
+ * for details.
  *
  * Caller owns a reference to the returned buffer. gst_buffer_unref() after
  * usage.
@@ -764,11 +752,10 @@ gst_adapter_take (GstAdapter * adapter, gsize nbytes)
  *     @nbytes of the adapter, or %NULL if @nbytes bytes are not available.
  *     gst_buffer_unref() when no longer needed.
  *
- * Since: 1.2
+ * Since: 1.6
  */
-
 GstBuffer *
-gst_adapter_take_buffer_fast (GstAdapter * adapter, gsize nbytes)
+gst_adapter_get_buffer_fast (GstAdapter * adapter, gsize nbytes)
 {
   GstBuffer *buffer = NULL;
   GstBuffer *cur;
@@ -779,7 +766,7 @@ gst_adapter_take_buffer_fast (GstAdapter * adapter, gsize nbytes)
   g_return_val_if_fail (GST_IS_ADAPTER (adapter), NULL);
   g_return_val_if_fail (nbytes > 0, NULL);
 
-  GST_LOG_OBJECT (adapter, "taking buffer of %" G_GSIZE_FORMAT " bytes",
+  GST_LOG_OBJECT (adapter, "getting buffer of %" G_GSIZE_FORMAT " bytes",
       nbytes);
 
   /* we don't have enough data, return NULL. This is unlikely
@@ -808,7 +795,8 @@ gst_adapter_take_buffer_fast (GstAdapter * adapter, gsize nbytes)
     GST_LOG_OBJECT (adapter, "appending %" G_GSIZE_FORMAT " bytes"
         " via region copy", size);
     if (buffer)
-      gst_buffer_copy_into (buffer, cur, GST_BUFFER_COPY_MEMORY, skip, size);
+      gst_buffer_copy_into (buffer, cur,
+          GST_BUFFER_COPY_MEMORY | GST_BUFFER_COPY_META, skip, size);
     else
       buffer = gst_buffer_copy_region (cur, GST_BUFFER_COPY_ALL, skip, size);
     skip = 0;
@@ -816,27 +804,33 @@ gst_adapter_take_buffer_fast (GstAdapter * adapter, gsize nbytes)
   }
 
 done:
-  gst_adapter_flush_unchecked (adapter, nbytes);
 
   return buffer;
 }
 
 /**
- * gst_adapter_take_buffer:
- * @adapter: a #GstAdapter
+ * gst_adapter_take_buffer_fast:
+ * @adapter:  a #GstAdapter
  * @nbytes: the number of bytes to take
  *
- * Returns a #GstBuffer containing the first @nbytes bytes of the
- * @adapter. The returned bytes will be flushed from the adapter.
- * This function is potentially more performant than
- * gst_adapter_take() since it can reuse the memory in pushed buffers
- * by subbuffering or merging. This function will always return a
- * buffer with a single memory region.
+ * Returns a #GstBuffer containing the first @nbytes of the @adapter.
+ * The returned bytes will be flushed from the adapter.  This function
+ * is potentially more performant than gst_adapter_take_buffer() since
+ * it can reuse the memory in pushed buffers by subbuffering or
+ * merging. Unlike gst_adapter_take_buffer(), the returned buffer may
+ * be composed of multiple non-contiguous #GstMemory objects, no
+ * copies are made.
  *
  * Note that no assumptions should be made as to whether certain buffer
  * flags such as the DISCONT flag are set on the returned buffer, or not.
  * The caller needs to explicitly set or unset flags that should be set or
  * unset.
+ *
+ * This will also copy over all GstMeta of the input buffers except
+ * for meta with the %GST_META_FLAG_POOLED flag or with the "memory" tag.
+ *
+ * This function can return buffer up to the return value of
+ * gst_adapter_available() without making copies if possible.
  *
  * Caller owns a reference to the returned buffer. gst_buffer_unref() after
  * usage.
@@ -846,9 +840,73 @@ done:
  * Returns: (transfer full) (nullable): a #GstBuffer containing the first
  *     @nbytes of the adapter, or %NULL if @nbytes bytes are not available.
  *     gst_buffer_unref() when no longer needed.
+ *
+ * Since: 1.2
  */
 GstBuffer *
-gst_adapter_take_buffer (GstAdapter * adapter, gsize nbytes)
+gst_adapter_take_buffer_fast (GstAdapter * adapter, gsize nbytes)
+{
+  GstBuffer *buffer;
+
+  g_return_val_if_fail (GST_IS_ADAPTER (adapter), NULL);
+  g_return_val_if_fail (nbytes > 0, NULL);
+
+  buffer = gst_adapter_get_buffer_fast (adapter, nbytes);
+  if (buffer)
+    gst_adapter_flush_unchecked (adapter, nbytes);
+
+  return buffer;
+}
+
+static gboolean
+foreach_metadata (GstBuffer * inbuf, GstMeta ** meta, gpointer user_data)
+{
+  GstBuffer *outbuf = user_data;
+  const GstMetaInfo *info = (*meta)->info;
+  gboolean do_copy = FALSE;
+
+  if (gst_meta_api_type_has_tag (info->api, _gst_meta_tag_memory)) {
+    /* never call the transform_meta with memory specific metadata */
+    GST_DEBUG ("not copying memory specific metadata %s",
+        g_type_name (info->api));
+    do_copy = FALSE;
+  } else {
+    do_copy = TRUE;
+    GST_DEBUG ("copying metadata %s", g_type_name (info->api));
+  }
+
+  if (do_copy) {
+    GstMetaTransformCopy copy_data = { FALSE, 0, -1 };
+    GST_DEBUG ("copy metadata %s", g_type_name (info->api));
+    /* simply copy then */
+    info->transform_func (outbuf, *meta, inbuf,
+        _gst_meta_transform_copy, &copy_data);
+  }
+  return TRUE;
+}
+
+/**
+ * gst_adapter_get_buffer:
+ * @adapter: a #GstAdapter
+ * @nbytes: the number of bytes to get
+ *
+ * Returns a #GstBuffer containing the first @nbytes of the @adapter, but
+ * does not flush them from the adapter. See gst_adapter_take_buffer()
+ * for details.
+ *
+ * Caller owns a reference to the returned buffer. gst_buffer_unref() after
+ * usage.
+ *
+ * Free-function: gst_buffer_unref
+ *
+ * Returns: (transfer full) (nullable): a #GstBuffer containing the first
+ *     @nbytes of the adapter, or %NULL if @nbytes bytes are not available.
+ *     gst_buffer_unref() when no longer needed.
+ *
+ * Since: 1.6
+ */
+GstBuffer *
+gst_adapter_get_buffer (GstAdapter * adapter, gsize nbytes)
 {
   GstBuffer *buffer;
   GstBuffer *cur;
@@ -858,7 +916,7 @@ gst_adapter_take_buffer (GstAdapter * adapter, gsize nbytes)
   g_return_val_if_fail (GST_IS_ADAPTER (adapter), NULL);
   g_return_val_if_fail (nbytes > 0, NULL);
 
-  GST_LOG_OBJECT (adapter, "taking buffer of %" G_GSIZE_FORMAT " bytes",
+  GST_LOG_OBJECT (adapter, "getting buffer of %" G_GSIZE_FORMAT " bytes",
       nbytes);
 
   /* we don't have enough data, return NULL. This is unlikely
@@ -897,12 +955,71 @@ gst_adapter_take_buffer (GstAdapter * adapter, gsize nbytes)
   }
 #endif
 
-  data = gst_adapter_take_internal (adapter, nbytes);
+  data = gst_adapter_get_internal (adapter, nbytes);
 
   buffer = gst_buffer_new_wrapped (data, nbytes);
 
+  {
+    GSList *g;
+    GstBuffer *cur;
+    gsize read_offset = 0;
+
+    g = adapter->buflist;
+    while (g && read_offset < nbytes + adapter->skip) {
+      cur = g->data;
+
+      gst_buffer_foreach_meta (cur, foreach_metadata, buffer);
+      read_offset += gst_buffer_get_size (cur);
+
+      g = g_slist_next (g);
+    }
+  }
+
 done:
-  gst_adapter_flush_unchecked (adapter, nbytes);
+
+  return buffer;
+}
+
+/**
+ * gst_adapter_take_buffer:
+ * @adapter: a #GstAdapter
+ * @nbytes: the number of bytes to take
+ *
+ * Returns a #GstBuffer containing the first @nbytes bytes of the
+ * @adapter. The returned bytes will be flushed from the adapter.
+ * This function is potentially more performant than
+ * gst_adapter_take() since it can reuse the memory in pushed buffers
+ * by subbuffering or merging. This function will always return a
+ * buffer with a single memory region.
+ *
+ * Note that no assumptions should be made as to whether certain buffer
+ * flags such as the DISCONT flag are set on the returned buffer, or not.
+ * The caller needs to explicitly set or unset flags that should be set or
+ * unset.
+ *
+ * Since 1.6 this will also copy over all GstMeta of the input buffers except
+ * for meta with the %GST_META_FLAG_POOLED flag or with the "memory" tag.
+ *
+ * Caller owns a reference to the returned buffer. gst_buffer_unref() after
+ * usage.
+ *
+ * Free-function: gst_buffer_unref
+ *
+ * Returns: (transfer full) (nullable): a #GstBuffer containing the first
+ *     @nbytes of the adapter, or %NULL if @nbytes bytes are not available.
+ *     gst_buffer_unref() when no longer needed.
+ */
+GstBuffer *
+gst_adapter_take_buffer (GstAdapter * adapter, gsize nbytes)
+{
+  GstBuffer *buffer;
+
+  g_return_val_if_fail (GST_IS_ADAPTER (adapter), NULL);
+  g_return_val_if_fail (nbytes > 0, NULL);
+
+  buffer = gst_adapter_get_buffer (adapter, nbytes);
+  if (buffer)
+    gst_adapter_flush_unchecked (adapter, nbytes);
 
   return buffer;
 }
@@ -943,6 +1060,51 @@ gst_adapter_take_list (GstAdapter * adapter, gsize nbytes)
     hsize = MIN (nbytes, cur_size - skip);
 
     cur = gst_adapter_take_buffer (adapter, hsize);
+
+    g_queue_push_tail (&queue, cur);
+
+    nbytes -= hsize;
+  }
+  return queue.head;
+}
+
+/**
+ * gst_adapter_get_list:
+ * @adapter: a #GstAdapter
+ * @nbytes: the number of bytes to get
+ *
+ * Returns a #GList of buffers containing the first @nbytes bytes of the
+ * @adapter, but does not flush them from the adapter. See
+ * gst_adapter_take_list() for details.
+ *
+ * Caller owns returned list and contained buffers. gst_buffer_unref() each
+ * buffer in the list before freeing the list after usage.
+ *
+ * Returns: (element-type Gst.Buffer) (transfer full) (nullable): a #GList of
+ *     buffers containing the first @nbytes of the adapter, or %NULL if @nbytes
+ *     bytes are not available
+ *
+ * Since: 1.6
+ */
+GList *
+gst_adapter_get_list (GstAdapter * adapter, gsize nbytes)
+{
+  GQueue queue = G_QUEUE_INIT;
+  GstBuffer *cur;
+  gsize hsize, skip, cur_size;
+
+  g_return_val_if_fail (GST_IS_ADAPTER (adapter), NULL);
+  g_return_val_if_fail (nbytes <= adapter->size, NULL);
+
+  GST_LOG_OBJECT (adapter, "getting %" G_GSIZE_FORMAT " bytes", nbytes);
+
+  while (nbytes > 0) {
+    cur = adapter->buflist->data;
+    skip = adapter->skip;
+    cur_size = gst_buffer_get_size (cur);
+    hsize = MIN (nbytes, cur_size - skip);
+
+    cur = gst_adapter_get_buffer (adapter, hsize);
 
     g_queue_push_tail (&queue, cur);
 
@@ -1000,6 +1162,59 @@ gst_adapter_take_buffer_list (GstAdapter * adapter, gsize nbytes)
     hsize = MIN (nbytes, cur_size - skip);
 
     gst_buffer_list_add (buffer_list, gst_adapter_take_buffer (adapter, hsize));
+    nbytes -= hsize;
+  }
+  return buffer_list;
+}
+
+/**
+ * gst_adapter_get_buffer_list:
+ * @adapter: a #GstAdapter
+ * @nbytes: the number of bytes to get
+ *
+ * Returns a #GstBufferList of buffers containing the first @nbytes bytes of
+ * the @adapter but does not flush them from the adapter. See
+ * gst_adapter_take_buffer_list() for details.
+ *
+ * Caller owns the returned list. Call gst_buffer_list_unref() to free
+ * the list after usage.
+ *
+ * Returns: (transfer full) (nullable): a #GstBufferList of buffers containing
+ *     the first @nbytes of the adapter, or %NULL if @nbytes bytes are not
+ *     available
+ *
+ * Since: 1.6
+ */
+GstBufferList *
+gst_adapter_get_buffer_list (GstAdapter * adapter, gsize nbytes)
+{
+  GstBufferList *buffer_list;
+  GstBuffer *cur;
+  gsize hsize, skip, cur_size;
+  guint n_bufs;
+
+  g_return_val_if_fail (GST_IS_ADAPTER (adapter), NULL);
+
+  if (nbytes > adapter->size)
+    return NULL;
+
+  GST_LOG_OBJECT (adapter, "getting %" G_GSIZE_FORMAT " bytes", nbytes);
+
+  /* try to create buffer list with sufficient size, so no resize is done later */
+  if (adapter->count < 64)
+    n_bufs = adapter->count;
+  else
+    n_bufs = (adapter->count * nbytes * 1.2 / adapter->size) + 1;
+
+  buffer_list = gst_buffer_list_new_sized (n_bufs);
+
+  while (nbytes > 0) {
+    cur = adapter->buflist->data;
+    skip = adapter->skip;
+    cur_size = gst_buffer_get_size (cur);
+    hsize = MIN (nbytes, cur_size - skip);
+
+    gst_buffer_list_add (buffer_list, gst_adapter_get_buffer (adapter, hsize));
     nbytes -= hsize;
   }
   return buffer_list;
