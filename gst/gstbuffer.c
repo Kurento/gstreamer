@@ -2259,8 +2259,8 @@ gst_buffer_foreach_meta (GstBuffer * buffer, GstBufferForeachMetaFunc func,
  *  the destination array will be written.
  * @dest_size: (out): A location where the size of @dest can be written
  *
- * Extracts a copy of at most @size bytes the data at @offset into a #GBytes.
- * @dest must be freed using g_free() when done.
+ * Extracts a copy of at most @size bytes the data at @offset into
+ * newly-allocated memory. @dest must be freed using g_free() when done.
  *
  * Since: 1.0.10
  */
@@ -2278,7 +2278,7 @@ gst_buffer_extract_dup (GstBuffer * buffer, gsize offset, gsize size,
   *dest_size = gst_buffer_extract (buffer, offset, *dest, size);
 }
 
-GST_DEBUG_CATEGORY (gst_parent_buffer_meta_debug);
+GST_DEBUG_CATEGORY_STATIC (gst_parent_buffer_meta_debug);
 
 /**
  * gst_buffer_add_parent_buffer_meta:
@@ -2331,6 +2331,9 @@ _gst_parent_buffer_meta_transform (GstBuffer * dest, GstMeta * meta,
 
     GST_CAT_DEBUG (gst_parent_buffer_meta_debug,
         "copy buffer reference metadata");
+  } else {
+    /* return FALSE, if transform type is not supported */
+    return FALSE;
   }
   return TRUE;
 }
@@ -2351,8 +2354,8 @@ _gst_parent_buffer_meta_init (GstParentBufferMeta * parent_meta,
   static volatile gsize _init;
 
   if (g_once_init_enter (&_init)) {
-    GST_DEBUG_CATEGORY_INIT (gst_parent_buffer_meta_debug, "glbufferrefmeta", 0,
-        "glbufferrefmeta");
+    GST_DEBUG_CATEGORY_INIT (gst_parent_buffer_meta_debug, "parentbuffermeta",
+        0, "parentbuffermeta");
     g_once_init_leave (&_init, 1);
   }
 

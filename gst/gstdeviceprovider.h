@@ -19,7 +19,6 @@
  * Boston, MA 02111-1307, USA.
  */
 
-#include <gst/gstdeviceproviderfactory.h>
 
 
 #ifndef __GST_DEVICE_PROVIDER_H__
@@ -32,6 +31,8 @@ G_BEGIN_DECLS
 typedef struct _GstDeviceProvider GstDeviceProvider;
 typedef struct _GstDeviceProviderClass GstDeviceProviderClass;
 typedef struct _GstDeviceProviderPrivate GstDeviceProviderPrivate;
+
+#include <gst/gstdeviceproviderfactory.h>
 
 #define GST_TYPE_DEVICE_PROVIDER                 (gst_device_provider_get_type())
 #define GST_IS_DEVICE_PROVIDER(obj)              (G_TYPE_CHECK_INSTANCE_TYPE ((obj), GST_TYPE_DEVICE_PROVIDER))
@@ -111,31 +112,37 @@ gboolean    gst_device_provider_can_monitor    (GstDeviceProvider * provider);
 GstBus *    gst_device_provider_get_bus        (GstDeviceProvider * provider);
 
 void        gst_device_provider_device_add     (GstDeviceProvider * provider,
-                                               GstDevice * device);
+                                                GstDevice * device);
 void        gst_device_provider_device_remove  (GstDeviceProvider * provider,
-                                               GstDevice * device);
+                                                GstDevice * device);
+
+gchar **    gst_device_provider_get_hidden_providers (GstDeviceProvider * provider);
+void        gst_device_provider_hide_provider        (GstDeviceProvider * provider,
+                                                      const gchar       * name);
+void        gst_device_provider_unhide_provider      (GstDeviceProvider * provider,
+                                                      const gchar       * name);
 
 
 /* device provider class meta data */
-void        gst_device_provider_class_set_metadata          (GstDeviceProviderClass *klass,
+void        gst_device_provider_class_set_metadata         (GstDeviceProviderClass *klass,
                                                             const gchar     *longname,
                                                             const gchar     *classification,
                                                             const gchar     *description,
                                                             const gchar     *author);
-void        gst_device_provider_class_set_static_metadata   (GstDeviceProviderClass *klass,
+void        gst_device_provider_class_set_static_metadata  (GstDeviceProviderClass *klass,
                                                             const gchar     *longname,
                                                             const gchar     *classification,
                                                             const gchar     *description,
                                                             const gchar     *author);
-void        gst_device_provider_class_add_metadata          (GstDeviceProviderClass * klass,
+void        gst_device_provider_class_add_metadata         (GstDeviceProviderClass * klass,
                                                             const gchar * key, const gchar * value);
-void        gst_device_provider_class_add_static_metadata   (GstDeviceProviderClass * klass,
+void        gst_device_provider_class_add_static_metadata  (GstDeviceProviderClass * klass,
                                                             const gchar * key, const gchar * value);
-const gchar * gst_device_provider_class_get_metadata        (GstDeviceProviderClass * klass,
-                                                              const gchar * key);
+const gchar * gst_device_provider_class_get_metadata       (GstDeviceProviderClass * klass,
+                                                            const gchar * key);
 
 /* factory management */
-GstDeviceProviderFactory * gst_device_provider_get_factory   (GstDeviceProvider * provider);
+GstDeviceProviderFactory * gst_device_provider_get_factory (GstDeviceProvider * provider);
 
 G_END_DECLS
 

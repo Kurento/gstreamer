@@ -1285,68 +1285,51 @@ static gboolean
 gst_base_transform_acceptcaps_default (GstBaseTransform * trans,
     GstPadDirection direction, GstCaps * caps)
 {
-#if 0
-  GstPad *otherpad;
-  GstCaps *othercaps = NULL;
-#endif
+  GstPad *pad, *otherpad;
+  GstCaps *templ, *otempl, *ocaps = NULL;
   gboolean ret = TRUE;
 
-#if 0
-  otherpad = (pad == trans->srcpad) ? trans->sinkpad : trans->srcpad;
+  pad =
+      (direction ==
+      GST_PAD_SINK) ? GST_BASE_TRANSFORM_SINK_PAD (trans) :
+      GST_BASE_TRANSFORM_SRC_PAD (trans);
+  otherpad =
+      (direction ==
+      GST_PAD_SINK) ? GST_BASE_TRANSFORM_SRC_PAD (trans) :
+      GST_BASE_TRANSFORM_SINK_PAD (trans);
 
-  /* we need fixed caps for the check, fall back to the default implementation
-   * if we don't */
-  if (!gst_caps_is_fixed (caps))
-#endif
-  {
-    GstCaps *allowed;
+  GST_DEBUG_OBJECT (trans, "accept caps %" GST_PTR_FORMAT, caps);
 
-    GST_DEBUG_OBJECT (trans, "accept caps %" GST_PTR_FORMAT, caps);
+  templ = gst_pad_get_pad_template_caps (pad);
+  otempl = gst_pad_get_pad_template_caps (otherpad);
 
-    /* get all the formats we can handle on this pad */
-    if (direction == GST_PAD_SRC)
-      allowed = gst_pad_query_caps (trans->srcpad, caps);
-    else
-      allowed = gst_pad_query_caps (trans->sinkpad, caps);
+  /* get all the formats we can handle on this pad */
+  GST_DEBUG_OBJECT (trans, "intersect with pad template: %" GST_PTR_FORMAT,
+      templ);
+  if (!gst_caps_can_intersect (caps, templ))
+    goto reject_caps;
 
-    if (!allowed) {
-      GST_DEBUG_OBJECT (trans, "gst_pad_query_caps() failed");
-      goto no_transform_possible;
-    }
-
-    GST_DEBUG_OBJECT (trans, "allowed caps %" GST_PTR_FORMAT, allowed);
-
-    /* intersect with the requested format */
-    ret = gst_caps_is_subset (caps, allowed);
-    gst_caps_unref (allowed);
-
-    if (!ret)
-      goto no_transform_possible;
-  }
-#if 0
-  else {
-    GST_DEBUG_OBJECT (pad, "accept caps %" GST_PTR_FORMAT, caps);
-
-    /* find best possible caps for the other pad as a way to see if we can
-     * transform this caps. */
-    othercaps = gst_base_transform_find_transform (trans, pad, caps, FALSE);
-    if (!othercaps || gst_caps_is_empty (othercaps))
-      goto no_transform_possible;
-
-    GST_DEBUG_OBJECT (pad, "we can transform to %" GST_PTR_FORMAT, othercaps);
-  }
-#endif
+  GST_DEBUG_OBJECT (trans, "trying to transform with filter: %"
+      GST_PTR_FORMAT " (the other pad template)", otempl);
+  ocaps = gst_base_transform_transform_caps (trans, direction, caps, otempl);
+  if (!ocaps || gst_caps_is_empty (ocaps))
+    goto no_transform_possible;
 
 done:
-#if 0
-  /* We know it's always NULL since we never use it */
-  if (othercaps)
-    gst_caps_unref (othercaps);
-#endif
-
+  GST_DEBUG_OBJECT (trans, "accept-caps result: %d", ret);
+  if (ocaps)
+    gst_caps_unref (ocaps);
+  gst_caps_unref (templ);
+  gst_caps_unref (otempl);
   return ret;
 
   /* ERRORS */
+reject_caps:
+  {
+    GST_DEBUG_OBJECT (trans, "caps can't intersect with the template");
+    ret = FALSE;
+    goto done;
+  }
 no_transform_possible:
   {
     GST_DEBUG_OBJECT (trans,
@@ -1469,6 +1452,37 @@ gst_base_transform_default_propose_allocation (GstBaseTransform * trans,
 }
 
 static gboolean
+gst_base_transform_reconfigure (GstBaseTransform * trans)
+{
+  gboolean reconfigure, ret = TRUE;
+
+  reconfigure = gst_pad_check_reconfigure (trans->srcpad);
+
+  if (G_UNLIKELY (reconfigure)) {
+    GstCaps *incaps;
+
+    GST_DEBUG_OBJECT (trans, "we had a pending reconfigure");
+
+    incaps = gst_pad_get_current_caps (trans->sinkpad);
+    if (incaps == NULL)
+      goto done;
+
+    /* if we need to reconfigure we pretend new caps arrived. This
+     * will reconfigure the transform with the new output format. */
+    if (!gst_base_transform_setcaps (trans, trans->sinkpad, incaps)) {
+      GST_ELEMENT_WARNING (trans, STREAM, FORMAT,
+          ("not negotiated"), ("not negotiated"));
+      ret = FALSE;
+    }
+
+    gst_caps_unref (incaps);
+  }
+
+done:
+  return ret;
+}
+
+static gboolean
 gst_base_transform_default_query (GstBaseTransform * trans,
     GstPadDirection direction, GstQuery * query)
 {
@@ -1496,6 +1510,10 @@ gst_base_transform_default_query (GstBaseTransform * trans,
       if (direction != GST_PAD_SINK)
         goto done;
 
+      ret = gst_base_transform_reconfigure (trans);
+      if (G_UNLIKELY (!ret))
+        goto done;
+
       GST_OBJECT_LOCK (trans);
       if (!priv->negotiated && !priv->passthrough && (klass->set_caps != NULL)) {
         GST_DEBUG_OBJECT (trans,
@@ -1503,8 +1521,9 @@ gst_base_transform_default_query (GstBaseTransform * trans,
         GST_OBJECT_UNLOCK (trans);
         goto done;
       }
-      if ((decide_query = trans->priv->query))
-        gst_query_ref (decide_query);
+
+      decide_query = trans->priv->query;
+      trans->priv->query = NULL;
       GST_OBJECT_UNLOCK (trans);
 
       GST_DEBUG_OBJECT (trans,
@@ -1517,8 +1536,16 @@ gst_base_transform_default_query (GstBaseTransform * trans,
       else
         ret = FALSE;
 
-      if (decide_query)
-        gst_query_unref (decide_query);
+      if (decide_query) {
+        GST_OBJECT_LOCK (trans);
+
+        if (trans->priv->query == NULL)
+          trans->priv->query = decide_query;
+        else
+          gst_query_unref (decide_query);
+
+        GST_OBJECT_UNLOCK (trans);
+      }
 
       GST_DEBUG_OBJECT (trans, "ALLOCATION ret %d, %" GST_PTR_FORMAT, ret,
           query);
@@ -1993,31 +2020,12 @@ default_submit_input_buffer (GstBaseTransform * trans, gboolean is_discont,
   GstBaseTransformClass *bclass = GST_BASE_TRANSFORM_GET_CLASS (trans);
   GstBaseTransformPrivate *priv = trans->priv;
   GstFlowReturn ret = GST_FLOW_OK;
-  gboolean reconfigure;
   GstClockTime running_time;
   GstClockTime timestamp;
 
-  reconfigure = gst_pad_check_reconfigure (trans->srcpad);
+  if (G_UNLIKELY (!gst_base_transform_reconfigure (trans)))
+    goto not_negotiated;
 
-  if (G_UNLIKELY (reconfigure)) {
-    GstCaps *incaps;
-
-    GST_DEBUG_OBJECT (trans, "we had a pending reconfigure");
-
-    incaps = gst_pad_get_current_caps (trans->sinkpad);
-    if (incaps == NULL)
-      goto no_reconfigure;
-
-    /* if we need to reconfigure we pretend new caps arrived. This
-     * will reconfigure the transform with the new output format. */
-    if (!gst_base_transform_setcaps (trans, trans->sinkpad, incaps)) {
-      gst_caps_unref (incaps);
-      goto not_negotiated;
-    }
-    gst_caps_unref (incaps);
-  }
-
-no_reconfigure:
   if (GST_BUFFER_OFFSET_IS_VALID (inbuf))
     GST_DEBUG_OBJECT (trans,
         "handling buffer %p of size %" G_GSIZE_FORMAT " and offset %"
@@ -2107,8 +2115,8 @@ skip:
 not_negotiated:
   {
     gst_buffer_unref (inbuf);
-    GST_ELEMENT_WARNING (trans, STREAM, FORMAT,
-        ("not negotiated"), ("not negotiated"));
+    if (GST_PAD_IS_FLUSHING (trans->srcpad))
+      return GST_FLOW_FLUSHING;
     return GST_FLOW_NOT_NEGOTIATED;
   }
 }
@@ -2198,8 +2206,6 @@ no_buffer:
         gst_flow_get_name (ret));
     return ret;
   }
-
-  return GST_FLOW_OK;
 }
 
 /* FIXME, getrange is broken, need to pull range from the other

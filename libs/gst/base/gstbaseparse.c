@@ -286,6 +286,7 @@ struct _GstBaseParsePrivate
   gboolean post_min_bitrate;
   gboolean post_avg_bitrate;
   gboolean post_max_bitrate;
+
   guint min_bitrate;
   guint avg_bitrate;
   guint max_bitrate;
@@ -359,6 +360,12 @@ struct _GstBaseParsePrivate
 
   /* When we need to skip more data than we have currently */
   guint skip;
+
+  /* Tag handling (stream tags only, global tags are passed through as-is) */
+  GstTagList *upstream_tags;
+  GstTagList *parser_tags;
+  GstTagMergeMode parser_tags_merge_mode;
+  gboolean tags_changed;
 };
 
 typedef struct _GstBaseParseSeek
@@ -432,7 +439,8 @@ static gboolean gst_base_parse_sink_activate_mode (GstPad * pad,
     GstObject * parent, GstPadMode mode, gboolean active);
 static gboolean gst_base_parse_handle_seek (GstBaseParse * parse,
     GstEvent * event);
-static void gst_base_parse_handle_tag (GstBaseParse * parse, GstEvent * event);
+static void gst_base_parse_set_upstream_tags (GstBaseParse * parse,
+    GstTagList * taglist);
 
 static void gst_base_parse_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec);
@@ -468,9 +476,6 @@ static gboolean gst_base_parse_src_query_default (GstBaseParse * parse,
     GstQuery * query);
 
 static void gst_base_parse_drain (GstBaseParse * parse);
-
-static void gst_base_parse_post_bitrates (GstBaseParse * parse,
-    gboolean post_min, gboolean post_avg, gboolean post_max);
 
 static gint64 gst_base_parse_find_offset (GstBaseParse * parse,
     GstClockTime time, gboolean before, GstClockTime * _ts);
@@ -644,6 +649,10 @@ gst_base_parse_init (GstBaseParse * parse, GstBaseParseClass * bclass)
   GST_DEBUG_OBJECT (parse, "init ok");
 
   GST_OBJECT_FLAG_SET (parse, GST_ELEMENT_FLAG_INDEXABLE);
+
+  parse->priv->upstream_tags = NULL;
+  parse->priv->parser_tags = NULL;
+  parse->priv->parser_tags_merge_mode = GST_TAG_MERGE_APPEND;
 }
 
 static void
@@ -823,9 +832,6 @@ gst_base_parse_reset (GstBaseParse * parse)
   parse->priv->pts_interpolate = TRUE;
   parse->priv->infer_ts = TRUE;
   parse->priv->has_timing_info = FALSE;
-  parse->priv->post_min_bitrate = TRUE;
-  parse->priv->post_avg_bitrate = TRUE;
-  parse->priv->post_max_bitrate = TRUE;
   parse->priv->min_bitrate = G_MAXUINT;
   parse->priv->max_bitrate = 0;
   parse->priv->avg_bitrate = 0;
@@ -867,6 +873,14 @@ gst_base_parse_reset (GstBaseParse * parse)
   if (parse->priv->adapter)
     gst_adapter_clear (parse->priv->adapter);
 
+  gst_base_parse_set_upstream_tags (parse, NULL);
+
+  if (parse->priv->parser_tags) {
+    gst_tag_list_unref (parse->priv->parser_tags);
+    parse->priv->parser_tags = NULL;
+  }
+  parse->priv->parser_tags_merge_mode = GST_TAG_MERGE_APPEND;
+
   parse->priv->new_frame = TRUE;
 
   parse->priv->first_buffer = TRUE;
@@ -876,6 +890,84 @@ gst_base_parse_reset (GstBaseParse * parse)
   parse->priv->detect_buffers = NULL;
   parse->priv->detect_buffers_size = 0;
   GST_OBJECT_UNLOCK (parse);
+}
+
+static gboolean
+gst_base_parse_check_bitrate_tag (GstBaseParse * parse, const gchar * tag)
+{
+  gboolean got_tag = FALSE;
+  guint n = 0;
+
+  if (parse->priv->upstream_tags != NULL)
+    got_tag = gst_tag_list_get_uint (parse->priv->upstream_tags, tag, &n);
+
+  if (!got_tag && parse->priv->parser_tags != NULL)
+    got_tag = gst_tag_list_get_uint (parse->priv->parser_tags, tag, &n);
+
+  return got_tag;
+}
+
+/* check if upstream or subclass tags contain bitrates already */
+static void
+gst_base_parse_check_bitrate_tags (GstBaseParse * parse)
+{
+  parse->priv->post_min_bitrate =
+      !gst_base_parse_check_bitrate_tag (parse, GST_TAG_MINIMUM_BITRATE);
+  parse->priv->post_avg_bitrate =
+      !gst_base_parse_check_bitrate_tag (parse, GST_TAG_BITRATE);
+  parse->priv->post_max_bitrate =
+      !gst_base_parse_check_bitrate_tag (parse, GST_TAG_MAXIMUM_BITRATE);
+}
+
+/* Queues new tag event with the current combined state of the stream tags
+ * (i.e. upstream tags merged with subclass tags and current baseparse tags) */
+static void
+gst_base_parse_queue_tag_event_update (GstBaseParse * parse)
+{
+  GstTagList *merged_tags;
+
+  GST_LOG_OBJECT (parse, "upstream : %" GST_PTR_FORMAT,
+      parse->priv->upstream_tags);
+  GST_LOG_OBJECT (parse, "parser   : %" GST_PTR_FORMAT,
+      parse->priv->parser_tags);
+  GST_LOG_OBJECT (parse, "mode     : %d", parse->priv->parser_tags_merge_mode);
+
+  merged_tags =
+      gst_tag_list_merge (parse->priv->upstream_tags, parse->priv->parser_tags,
+      parse->priv->parser_tags_merge_mode);
+
+  GST_DEBUG_OBJECT (parse, "merged   : %" GST_PTR_FORMAT, merged_tags);
+
+  if (merged_tags == NULL)
+    return;
+
+  if (gst_tag_list_is_empty (merged_tags)) {
+    gst_tag_list_unref (merged_tags);
+    return;
+  }
+
+  /* only add bitrate tags to non-empty taglists for now, and only if neither
+   * upstream tags nor the subclass sets the bitrate tag in question already */
+  if (parse->priv->min_bitrate != G_MAXUINT && parse->priv->post_min_bitrate) {
+    GST_LOG_OBJECT (parse, "adding min bitrate %u", parse->priv->min_bitrate);
+    gst_tag_list_add (merged_tags, GST_TAG_MERGE_KEEP, GST_TAG_MINIMUM_BITRATE,
+        parse->priv->min_bitrate, NULL);
+  }
+  if (parse->priv->max_bitrate != 0 && parse->priv->post_max_bitrate) {
+    GST_LOG_OBJECT (parse, "adding max bitrate %u", parse->priv->max_bitrate);
+    gst_tag_list_add (merged_tags, GST_TAG_MERGE_KEEP, GST_TAG_MAXIMUM_BITRATE,
+        parse->priv->max_bitrate, NULL);
+  }
+  if (parse->priv->avg_bitrate != 0 && parse->priv->post_avg_bitrate) {
+    parse->priv->posted_avg_bitrate = parse->priv->avg_bitrate;
+    GST_LOG_OBJECT (parse, "adding avg bitrate %u", parse->priv->avg_bitrate);
+    gst_tag_list_add (merged_tags, GST_TAG_MERGE_KEEP, GST_TAG_BITRATE,
+        parse->priv->avg_bitrate, NULL);
+  }
+
+  parse->priv->pending_events =
+      g_list_prepend (parse->priv->pending_events,
+      gst_event_new_tag (merged_tags));
 }
 
 /* gst_base_parse_parse_frame:
@@ -1186,14 +1278,16 @@ gst_base_parse_sink_event_default (GstBaseParse * parse, GstEvent * event)
         GST_ELEMENT_ERROR (parse, STREAM, WRONG_TYPE,
             ("No valid frames found before end of stream"), (NULL));
       }
-      /* newsegment and other serialized events before eos */
-      gst_base_parse_push_pending_events (parse);
 
       if (!parse->priv->saw_gaps
           && parse->priv->framecount < MIN_FRAMES_TO_POST_BITRATE) {
         /* We've not posted bitrate tags yet - do so now */
-        gst_base_parse_post_bitrates (parse, TRUE, TRUE, TRUE);
+        gst_base_parse_queue_tag_event_update (parse);
       }
+
+      /* newsegment and other serialized events before eos */
+      gst_base_parse_push_pending_events (parse);
+
       forward_immediate = TRUE;
       break;
     case GST_EVENT_CUSTOM_DOWNSTREAM:{
@@ -1235,15 +1329,32 @@ gst_base_parse_sink_event_default (GstBaseParse * parse, GstEvent * event)
       break;
     }
     case GST_EVENT_TAG:
-      /* See if any bitrate tags were posted */
-      gst_base_parse_handle_tag (parse, event);
-      break;
+    {
+      GstTagList *tags = NULL;
 
+      gst_event_parse_tag (event, &tags);
+
+      /* We only care about stream tags here, global tags we just forward */
+      if (gst_tag_list_get_scope (tags) != GST_TAG_SCOPE_STREAM)
+        break;
+
+      gst_base_parse_set_upstream_tags (parse, tags);
+      gst_base_parse_queue_tag_event_update (parse);
+      parse->priv->tags_changed = FALSE;
+      gst_event_unref (event);
+      event = NULL;
+      ret = TRUE;
+      break;
+    }
     case GST_EVENT_STREAM_START:
+    {
       if (parse->priv->pad_mode != GST_PAD_MODE_PULL)
         forward_immediate = TRUE;
-      break;
 
+      gst_base_parse_set_upstream_tags (parse, NULL);
+      parse->priv->tags_changed = TRUE;
+      break;
+    }
     default:
       break;
   }
@@ -1543,80 +1654,30 @@ no_duration_bytes:
 }
 
 static void
-gst_base_parse_update_duration (GstBaseParse * baseparse)
+gst_base_parse_update_duration (GstBaseParse * parse)
 {
-  GstPad *peer;
-  GstBaseParse *parse;
+  gint64 ptot, dest_value;
 
-  parse = GST_BASE_PARSE (baseparse);
+  if (!gst_pad_peer_query_duration (parse->sinkpad, GST_FORMAT_BYTES, &ptot))
+    return;
 
-  peer = gst_pad_get_peer (parse->sinkpad);
-  if (peer) {
-    gboolean qres = FALSE;
-    gint64 ptot, dest_value;
+  if (!gst_base_parse_convert (parse, GST_FORMAT_BYTES, ptot,
+          GST_FORMAT_TIME, &dest_value))
+    return;
 
-    qres = gst_pad_query_duration (peer, GST_FORMAT_BYTES, &ptot);
-    gst_object_unref (GST_OBJECT (peer));
-    if (qres) {
-      if (gst_base_parse_convert (parse, GST_FORMAT_BYTES, ptot,
-              GST_FORMAT_TIME, &dest_value)) {
+  /* inform if duration changed, but try to avoid spamming */
+  parse->priv->estimated_drift += dest_value - parse->priv->estimated_duration;
 
-        /* inform if duration changed, but try to avoid spamming */
-        parse->priv->estimated_drift +=
-            dest_value - parse->priv->estimated_duration;
+  parse->priv->estimated_duration = dest_value;
+  GST_LOG_OBJECT (parse,
+      "updated estimated duration to %" GST_TIME_FORMAT,
+      GST_TIME_ARGS (dest_value));
 
-        parse->priv->estimated_duration = dest_value;
-        GST_LOG_OBJECT (parse,
-            "updated estimated duration to %" GST_TIME_FORMAT,
-            GST_TIME_ARGS (dest_value));
-
-        if (parse->priv->estimated_drift > GST_SECOND ||
-            parse->priv->estimated_drift < -GST_SECOND) {
-          gst_element_post_message (GST_ELEMENT (parse),
-              gst_message_new_duration_changed (GST_OBJECT (parse)));
-          parse->priv->estimated_drift = 0;
-        }
-      }
-    }
-  }
-}
-
-static void
-gst_base_parse_post_bitrates (GstBaseParse * parse, gboolean post_min,
-    gboolean post_avg, gboolean post_max)
-{
-  GstTagList *taglist = NULL;
-
-  if (post_min && parse->priv->post_min_bitrate) {
-    taglist = gst_tag_list_new_empty ();
-
-    gst_tag_list_add (taglist, GST_TAG_MERGE_REPLACE,
-        GST_TAG_MINIMUM_BITRATE, parse->priv->min_bitrate, NULL);
-  }
-
-  if (post_avg && parse->priv->post_avg_bitrate) {
-    if (taglist == NULL)
-      taglist = gst_tag_list_new_empty ();
-
-    parse->priv->posted_avg_bitrate = parse->priv->avg_bitrate;
-    gst_tag_list_add (taglist, GST_TAG_MERGE_REPLACE, GST_TAG_BITRATE,
-        parse->priv->avg_bitrate, NULL);
-  }
-
-  if (post_max && parse->priv->post_max_bitrate) {
-    if (taglist == NULL)
-      taglist = gst_tag_list_new_empty ();
-
-    gst_tag_list_add (taglist, GST_TAG_MERGE_REPLACE,
-        GST_TAG_MAXIMUM_BITRATE, parse->priv->max_bitrate, NULL);
-  }
-
-  GST_DEBUG_OBJECT (parse, "Updated bitrates. Min: %u, Avg: %u, Max: %u",
-      parse->priv->min_bitrate, parse->priv->avg_bitrate,
-      parse->priv->max_bitrate);
-
-  if (taglist != NULL) {
-    gst_pad_push_event (parse->srcpad, gst_event_new_tag (taglist));
+  if (parse->priv->estimated_drift > GST_SECOND ||
+      parse->priv->estimated_drift < -GST_SECOND) {
+    gst_element_post_message (GST_ELEMENT (parse),
+        gst_message_new_duration_changed (GST_OBJECT (parse)));
+    parse->priv->estimated_drift = 0;
   }
 }
 
@@ -1635,7 +1696,6 @@ gst_base_parse_update_bitrates (GstBaseParse * parse, GstBaseParseFrame * frame)
 
   guint64 data_len, frame_dur;
   gint overhead, frame_bitrate, old_avg_bitrate;
-  gboolean update_min = FALSE, update_avg = FALSE, update_max = FALSE;
   GstBuffer *buffer = frame->buffer;
 
   overhead = frame->overhead;
@@ -1663,7 +1723,7 @@ gst_base_parse_update_bitrates (GstBaseParse * parse, GstBaseParseFrame * frame)
     parse->priv->avg_bitrate = parse->priv->bitrate;
     /* spread this (confirmed) info ASAP */
     if (parse->priv->posted_avg_bitrate != parse->priv->avg_bitrate)
-      gst_base_parse_post_bitrates (parse, FALSE, TRUE, FALSE);
+      parse->priv->tags_changed = TRUE;
   }
 
   if (frame_dur)
@@ -1674,36 +1734,33 @@ gst_base_parse_update_bitrates (GstBaseParse * parse, GstBaseParseFrame * frame)
   GST_LOG_OBJECT (parse, "frame bitrate %u, avg bitrate %u", frame_bitrate,
       parse->priv->avg_bitrate);
 
-  if (parse->priv->framecount < MIN_FRAMES_TO_POST_BITRATE) {
-    goto exit;
-  } else if (parse->priv->framecount == MIN_FRAMES_TO_POST_BITRATE) {
-    /* always post all at threshold time */
-    update_min = update_max = update_avg = TRUE;
-  }
+  if (parse->priv->framecount < MIN_FRAMES_TO_POST_BITRATE)
+    return;
+
+  if (parse->priv->framecount == MIN_FRAMES_TO_POST_BITRATE &&
+      (parse->priv->post_min_bitrate || parse->priv->post_avg_bitrate
+          || parse->priv->post_max_bitrate))
+    parse->priv->tags_changed = TRUE;
 
   if (G_LIKELY (parse->priv->framecount >= MIN_FRAMES_TO_POST_BITRATE)) {
     if (frame_bitrate < parse->priv->min_bitrate) {
       parse->priv->min_bitrate = frame_bitrate;
-      update_min = TRUE;
+      if (parse->priv->post_min_bitrate)
+        parse->priv->tags_changed = TRUE;
     }
 
     if (frame_bitrate > parse->priv->max_bitrate) {
       parse->priv->max_bitrate = frame_bitrate;
-      update_max = TRUE;
+      if (parse->priv->post_max_bitrate)
+        parse->priv->tags_changed = TRUE;
     }
 
     old_avg_bitrate = parse->priv->posted_avg_bitrate;
-    if ((gint) (old_avg_bitrate - parse->priv->avg_bitrate) > update_threshold
-        || (gint) (parse->priv->avg_bitrate - old_avg_bitrate) >
-        update_threshold)
-      update_avg = TRUE;
+    if (((gint) (old_avg_bitrate - parse->priv->avg_bitrate) > update_threshold
+            || (gint) (parse->priv->avg_bitrate - old_avg_bitrate) >
+            update_threshold) && parse->priv->post_avg_bitrate)
+      parse->priv->tags_changed = TRUE;
   }
-
-  if ((update_min || update_avg || update_max))
-    gst_base_parse_post_bitrates (parse, update_min, update_avg, update_max);
-
-exit:
-  return;
 }
 
 /**
@@ -2237,6 +2294,11 @@ gst_base_parse_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
   if (G_UNLIKELY (!parse->priv->checked_media)) {
     /* have caps; check identity */
     gst_base_parse_check_media (parse);
+  }
+
+  if (parse->priv->tags_changed) {
+    gst_base_parse_queue_tag_event_update (parse);
+    parse->priv->tags_changed = FALSE;
   }
 
   /* Push pending events, including SEGMENT events */
@@ -3016,8 +3078,10 @@ gst_base_parse_chain (GstPad * pad, GstObject * parent, GstBuffer * buffer)
     /* already inform subclass what timestamps we have planned,
      * at least if provided by time-based upstream */
     if (parse->priv->upstream_format == GST_FORMAT_TIME) {
+      tmpbuf = gst_buffer_make_writable (tmpbuf);
       GST_BUFFER_PTS (tmpbuf) = parse->priv->next_pts;
       GST_BUFFER_DTS (tmpbuf) = parse->priv->next_dts;
+      GST_BUFFER_DURATION (tmpbuf) = GST_CLOCK_TIME_NONE;
     }
 
     /* keep the adapter mapped, so keep track of what has to be flushed */
@@ -3322,8 +3386,6 @@ gst_base_parse_loop (GstPad * pad)
   }
 
   ret = gst_base_parse_scan_frame (parse, klass);
-  if (ret != GST_FLOW_OK)
-    goto done;
 
   /* eat expected eos signalling past segment in reverse playback */
   if (parse->segment.rate < 0.0 && ret == GST_FLOW_EOS &&
@@ -3333,8 +3395,11 @@ gst_base_parse_loop (GstPad * pad)
     gst_base_parse_finish_fragment (parse, FALSE);
     /* force previous fragment */
     parse->priv->offset = -1;
-    ret = GST_FLOW_OK;
+    goto eos;
   }
+
+  if (ret != GST_FLOW_OK)
+    goto done;
 
 done:
   if (ret == GST_FLOW_EOS)
@@ -3393,6 +3458,9 @@ pause:
       push_eos = TRUE;
     }
     if (push_eos) {
+      if (parse->priv->estimated_duration <= 0) {
+        gst_base_parse_update_duration (parse);
+      }
       /* Push pending events, including SEGMENT events */
       gst_base_parse_push_pending_events (parse);
 
@@ -4289,9 +4357,6 @@ gst_base_parse_handle_seek (GstBaseParse * parse, GstEvent * event)
   if (rate < 0.0 && parse->priv->pad_mode == GST_PAD_MODE_PUSH)
     goto negative_rate;
 
-  if (rate < 0.0 && parse->priv->pad_mode == GST_PAD_MODE_PULL)
-    goto negative_rate_pull_mode;
-
   if (start_type != GST_SEEK_TYPE_SET ||
       (stop_type != GST_SEEK_TYPE_SET && stop_type != GST_SEEK_TYPE_NONE))
     goto wrong_type;
@@ -4317,20 +4382,36 @@ gst_base_parse_handle_seek (GstBaseParse * parse, GstEvent * event)
     GST_DEBUG_OBJECT (parse, "accurate seek possible");
     accurate = TRUE;
   }
+
   if (accurate) {
-    GstClockTime startpos = seeksegment.position;
+    GstClockTime startpos;
+    if (rate >= 0)
+      startpos = seeksegment.position;
+    else
+      startpos = start;
 
     /* accurate requested, so ... seek a bit before target */
     if (startpos < parse->priv->lead_in_ts)
       startpos = 0;
     else
       startpos -= parse->priv->lead_in_ts;
+
+    if (seeksegment.stop == -1 && seeksegment.duration != -1)
+      seeksegment.stop = seeksegment.start + seeksegment.duration;
+
     seekpos = gst_base_parse_find_offset (parse, startpos, TRUE, &start_ts);
     seekstop = gst_base_parse_find_offset (parse, seeksegment.stop, FALSE,
         NULL);
   } else {
-    start_ts = seeksegment.position;
-    if (!gst_base_parse_convert (parse, format, seeksegment.position,
+    if (rate >= 0)
+      start_ts = seeksegment.position;
+    else
+      start_ts = start;
+
+    if (seeksegment.stop == -1 && seeksegment.duration != -1)
+      seeksegment.stop = seeksegment.start + seeksegment.duration;
+
+    if (!gst_base_parse_convert (parse, format, start_ts,
             GST_FORMAT_BYTES, &seekpos))
       goto convert_failed;
     if (!gst_base_parse_convert (parse, format, seeksegment.stop,
@@ -4494,12 +4575,6 @@ done:
   return res;
 
   /* ERRORS */
-negative_rate_pull_mode:
-  {
-    GST_FIXME_OBJECT (parse, "negative playback in pull mode needs fixing");
-    res = FALSE;
-    goto done;
-  }
 negative_rate:
   {
     GST_DEBUG_OBJECT (parse, "negative playback rates delegated upstream.");
@@ -4527,33 +4602,23 @@ convert_failed:
   }
 }
 
-/* Checks if bitrates are available from upstream tags so that we don't
- * override them later
- */
 static void
-gst_base_parse_handle_tag (GstBaseParse * parse, GstEvent * event)
+gst_base_parse_set_upstream_tags (GstBaseParse * parse, GstTagList * taglist)
 {
-  GstTagList *taglist = NULL;
-  guint tmp;
-
-  gst_event_parse_tag (event, &taglist);
-
-  /* We only care about stream tags here */
-  if (gst_tag_list_get_scope (taglist) != GST_TAG_SCOPE_STREAM)
+  if (taglist == parse->priv->upstream_tags)
     return;
 
-  if (gst_tag_list_get_uint (taglist, GST_TAG_MINIMUM_BITRATE, &tmp)) {
-    GST_DEBUG_OBJECT (parse, "upstream min bitrate %d", tmp);
-    parse->priv->post_min_bitrate = FALSE;
+  if (parse->priv->upstream_tags) {
+    gst_tag_list_unref (parse->priv->upstream_tags);
+    parse->priv->upstream_tags = NULL;
   }
-  if (gst_tag_list_get_uint (taglist, GST_TAG_BITRATE, &tmp)) {
-    GST_DEBUG_OBJECT (parse, "upstream avg bitrate %d", tmp);
-    parse->priv->post_avg_bitrate = FALSE;
-  }
-  if (gst_tag_list_get_uint (taglist, GST_TAG_MAXIMUM_BITRATE, &tmp)) {
-    GST_DEBUG_OBJECT (parse, "upstream max bitrate %d", tmp);
-    parse->priv->post_max_bitrate = FALSE;
-  }
+
+  GST_INFO_OBJECT (parse, "upstream tags: %" GST_PTR_FORMAT, taglist);
+
+  if (taglist != NULL)
+    parse->priv->upstream_tags = gst_tag_list_ref (taglist);
+
+  gst_base_parse_check_bitrate_tags (parse);
 }
 
 #if 0
@@ -4674,4 +4739,51 @@ gst_base_parse_set_ts_at_offset (GstBaseParse * parse, gsize offset)
 
   if (GST_CLOCK_TIME_IS_VALID (dts) && (parse->priv->prev_dts != dts))
     parse->priv->prev_dts = parse->priv->next_dts = dts;
+}
+
+/**
+ * gst_base_parse_merge_tags:
+ * @parse: a #GstBaseParse
+ * @tags: (allow-none): a #GstTagList to merge, or NULL to unset
+ *     previously-set tags
+ * @mode: the #GstTagMergeMode to use, usually #GST_TAG_MERGE_REPLACE
+ *
+ * Sets the parser subclass's tags and how they should be merged with any
+ * upstream stream tags. This will override any tags previously-set
+ * with gst_base_parse_merge_tags().
+ *
+ * Note that this is provided for convenience, and the subclass is
+ * not required to use this and can still do tag handling on its own.
+ *
+ * Since: 1.6
+ */
+void
+gst_base_parse_merge_tags (GstBaseParse * parse, GstTagList * tags,
+    GstTagMergeMode mode)
+{
+  g_return_if_fail (GST_IS_BASE_PARSE (parse));
+  g_return_if_fail (tags == NULL || GST_IS_TAG_LIST (tags));
+  g_return_if_fail (tags == NULL || mode != GST_TAG_MERGE_UNDEFINED);
+
+  GST_OBJECT_LOCK (parse);
+
+  if (tags != parse->priv->parser_tags) {
+    if (parse->priv->parser_tags) {
+      gst_tag_list_unref (parse->priv->parser_tags);
+      parse->priv->parser_tags = NULL;
+      parse->priv->parser_tags_merge_mode = GST_TAG_MERGE_APPEND;
+    }
+    if (tags) {
+      parse->priv->parser_tags = gst_tag_list_ref (tags);
+      parse->priv->parser_tags_merge_mode = mode;
+    }
+
+    GST_DEBUG_OBJECT (parse, "setting parser tags to %" GST_PTR_FORMAT
+        " (mode %d)", tags, parse->priv->parser_tags_merge_mode);
+
+    gst_base_parse_check_bitrate_tags (parse);
+    parse->priv->tags_changed = TRUE;
+  }
+
+  GST_OBJECT_UNLOCK (parse);
 }

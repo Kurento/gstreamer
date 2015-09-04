@@ -164,6 +164,7 @@ typedef struct
   GstPadProbeInfo *info;
   gboolean dropped;
   gboolean pass;
+  gboolean handled;
   gboolean marshalled;
   guint cookie;
 } ProbeMarshall;
@@ -471,6 +472,8 @@ find_event_by_type (GstPad * pad, GstEventType type, guint idx)
       if (idx == 0)
         goto found;
       idx--;
+    } else if (GST_EVENT_TYPE (ev->event) > type) {
+      break;
     }
   }
   ev = NULL;
@@ -493,6 +496,8 @@ find_event (GstPad * pad, GstEvent * event)
     ev = &g_array_index (events, PadEvent, i);
     if (event == ev->event)
       goto found;
+    else if (GST_EVENT_TYPE (ev->event) > GST_EVENT_TYPE (event))
+      break;
   }
   ev = NULL;
 found:
@@ -516,7 +521,9 @@ remove_event_by_type (GstPad * pad, GstEventType type)
     if (ev->event == NULL)
       goto next;
 
-    if (GST_EVENT_TYPE (ev->event) != type)
+    if (GST_EVENT_TYPE (ev->event) > type)
+      break;
+    else if (GST_EVENT_TYPE (ev->event) != type)
       goto next;
 
     gst_event_unref (ev->event);
@@ -1420,6 +1427,9 @@ gst_pad_add_probe (GstPad * pad, GstPadProbeType mask,
           break;
         case GST_PAD_PROBE_OK:
           GST_DEBUG_OBJECT (pad, "probe returned OK");
+          break;
+        case GST_PAD_PROBE_HANDLED:
+          GST_DEBUG_OBJECT (pad, "probe handled the data");
           break;
         default:
           GST_DEBUG_OBJECT (pad, "probe returned %d", ret);
@@ -2646,24 +2656,26 @@ GstCaps *
 gst_pad_get_allowed_caps (GstPad * pad)
 {
   GstCaps *mycaps;
-  GstCaps *caps;
-  GstPad *peer;
+  GstCaps *caps = NULL;
+  GstQuery *query;
 
   g_return_val_if_fail (GST_IS_PAD (pad), NULL);
 
   GST_OBJECT_LOCK (pad);
-  peer = GST_PAD_PEER (pad);
-  if (G_UNLIKELY (peer == NULL))
+  if (G_UNLIKELY (GST_PAD_PEER (pad) == NULL))
     goto no_peer;
+  GST_OBJECT_UNLOCK (pad);
 
   GST_CAT_DEBUG_OBJECT (GST_CAT_PROPERTIES, pad, "getting allowed caps");
 
-  gst_object_ref (peer);
-  GST_OBJECT_UNLOCK (pad);
   mycaps = gst_pad_query_caps (pad, NULL);
 
-  caps = gst_pad_query_caps (peer, mycaps);
-  gst_object_unref (peer);
+  /* Query peer caps */
+  query = gst_query_new_caps (mycaps);
+  gst_pad_peer_query (pad, query);
+  gst_query_parse_caps_result (query, &caps);
+  gst_caps_ref (caps);
+  gst_query_unref (query);
 
   gst_caps_unref (mycaps);
 
@@ -2971,7 +2983,10 @@ gst_pad_query_accept_caps_default (GstPad * pad, GstQuery * query)
       "fallback ACCEPT_CAPS query, consider implementing a specialized version");
 
   gst_query_parse_accept_caps (query, &caps);
-  allowed = gst_pad_query_caps (pad, caps);
+  if (GST_PAD_IS_ACCEPT_TEMPLATE (pad))
+    allowed = gst_pad_get_pad_template_caps (pad);
+  else
+    allowed = gst_pad_query_caps (pad, caps);
 
   if (allowed) {
     if (GST_PAD_IS_ACCEPT_INTERSECT (pad)) {
@@ -3359,6 +3374,10 @@ probe_hook_marshal (GHook * hook, ProbeMarshall * data)
       info->type = GST_PAD_PROBE_TYPE_INVALID;
       data->dropped = TRUE;
       break;
+    case GST_PAD_PROBE_HANDLED:
+      GST_DEBUG_OBJECT (pad, "probe handled data");
+      data->handled = TRUE;
+      break;
     case GST_PAD_PROBE_PASS:
       /* inform the pad block to let things pass */
       GST_DEBUG_OBJECT (pad, "asked to pass item");
@@ -3388,31 +3407,40 @@ no_match:
     if (G_UNLIKELY (pad->num_probes)) {				\
       GstFlowReturn pval = defaultval;				\
       /* pass NULL as the data item */                          \
-      GstPadProbeInfo info = { mask, 0, NULL, 0, 0 };           \
+      GstPadProbeInfo info = { mask, 0, NULL, 0, 0 };		\
+      info.ABI.abi.flow_ret = defaultval;			\
       ret = do_probe_callbacks (pad, &info, defaultval);	\
       if (G_UNLIKELY (ret != pval && ret != GST_FLOW_OK))	\
         goto label;						\
     }								\
   } G_STMT_END
 
-#define PROBE_FULL(pad,mask,data,offs,size,label)               \
-  G_STMT_START {						\
-    if (G_UNLIKELY (pad->num_probes)) {				\
-      /* pass the data item */                                  \
-      GstPadProbeInfo info = { mask, 0, data, offs, size };     \
-      ret = do_probe_callbacks (pad, &info, GST_FLOW_OK);	\
-      /* store the possibly updated data item */                \
-      data = GST_PAD_PROBE_INFO_DATA (&info);                   \
-      /* if something went wrong, exit */                       \
-      if (G_UNLIKELY (ret != GST_FLOW_OK))	                \
-        goto label;						\
-    }								\
+#define PROBE_FULL(pad,mask,data,offs,size,label,handleable,handle_label) \
+  G_STMT_START {							\
+    if (G_UNLIKELY (pad->num_probes)) {					\
+      /* pass the data item */						\
+      GstPadProbeInfo info = { mask, 0, data, offs, size };		\
+      info.ABI.abi.flow_ret = GST_FLOW_OK;				\
+      ret = do_probe_callbacks (pad, &info, GST_FLOW_OK);		\
+      /* store the possibly updated data item */			\
+      data = GST_PAD_PROBE_INFO_DATA (&info);				\
+      /* if something went wrong, exit */				\
+      if (G_UNLIKELY (ret != GST_FLOW_OK)) {				\
+	if (handleable && ret == GST_FLOW_CUSTOM_SUCCESS_1) {		\
+	  ret = info.ABI.abi.flow_ret;						\
+	  goto handle_label;						\
+	}								\
+	goto label;							\
+      }									\
+    }									\
   } G_STMT_END
 
-#define PROBE_PUSH(pad,mask,data,label)		                 \
-  PROBE_FULL(pad, mask, data, -1, -1, label);
-#define PROBE_PULL(pad,mask,data,offs,size,label)		 \
-  PROBE_FULL(pad, mask, data, offs, size, label);
+#define PROBE_PUSH(pad,mask,data,label)		\
+  PROBE_FULL(pad, mask, data, -1, -1, label, FALSE, label);
+#define PROBE_HANDLE(pad,mask,data,label,handle_label)	\
+  PROBE_FULL(pad, mask, data, -1, -1, label, TRUE, handle_label);
+#define PROBE_PULL(pad,mask,data,offs,size,label)		\
+  PROBE_FULL(pad, mask, data, offs, size, label, FALSE, label);
 
 static GstFlowReturn
 do_pad_idle_probe_wait (GstPad * pad)
@@ -3457,6 +3485,7 @@ do_probe_callbacks (GstPad * pad, GstPadProbeInfo * info,
   data.pad = pad;
   data.info = info;
   data.pass = FALSE;
+  data.handled = FALSE;
   data.marshalled = FALSE;
   data.dropped = FALSE;
   data.cookie = ++pad->priv->probe_cookie;
@@ -3488,6 +3517,11 @@ again:
   /* the first item that dropped will stop the hooks and then we drop here */
   if (data.dropped)
     goto dropped;
+
+  /* If one handler took care of it, let the the item pass */
+  if (data.handled) {
+    goto handled;
+  }
 
   /* if no handler matched and we are blocking, let the item pass */
   if (!data.marshalled && is_block)
@@ -3549,6 +3583,11 @@ passed:
     /* FIXME : Should we return FLOW_OK or the defaultval ?? */
     GST_DEBUG_OBJECT (pad, "data is passed");
     return GST_FLOW_OK;
+  }
+handled:
+  {
+    GST_DEBUG_OBJECT (pad, "data was handled");
+    return GST_FLOW_CUSTOM_SUCCESS_1;
   }
 }
 
@@ -3853,9 +3892,12 @@ probe_stopped:
     if (G_UNLIKELY (serialized))
       GST_PAD_STREAM_UNLOCK (pad);
 
-    /* if a probe dropped, we don't sent it further but assume that the probe
-     * did not answer the query and return FALSE */
-    res = FALSE;
+    /* if a probe dropped without handling, we don't sent it further but assume
+     * that the probe did not answer the query and return FALSE */
+    if (ret != GST_FLOW_CUSTOM_SUCCESS_1)
+      res = FALSE;
+    else
+      res = TRUE;
 
     return res;
   }
@@ -3967,9 +4009,12 @@ probe_stopped:
     GST_DEBUG_OBJECT (pad, "probe stopped: %s", gst_flow_get_name (ret));
     GST_OBJECT_UNLOCK (pad);
 
-    /* if a probe dropped, we don't sent it further but assume that the probe
-     * did not answer the query and return FALSE */
-    res = FALSE;
+    /* if a probe dropped without handling, we don't sent it further but
+     * assume that the probe did not answer the query and return FALSE */
+    if (ret != GST_FLOW_CUSTOM_SUCCESS_1)
+      res = FALSE;
+    else
+      res = TRUE;
 
     return res;
   }
@@ -3987,6 +4032,7 @@ gst_pad_chain_data_unchecked (GstPad * pad, GstPadProbeType type, void *data)
 {
   GstFlowReturn ret;
   GstObject *parent;
+  gboolean handled = FALSE;
 
   GST_PAD_STREAM_LOCK (pad);
 
@@ -4016,9 +4062,10 @@ gst_pad_chain_data_unchecked (GstPad * pad, GstPadProbeType type, void *data)
   }
 #endif
 
-  PROBE_PUSH (pad, type | GST_PAD_PROBE_TYPE_BLOCK, data, probe_stopped);
+  PROBE_HANDLE (pad, type | GST_PAD_PROBE_TYPE_BLOCK, data, probe_stopped,
+      probe_handled);
 
-  PROBE_PUSH (pad, type, data, probe_stopped);
+  PROBE_HANDLE (pad, type, data, probe_stopped, probe_handled);
 
   ACQUIRE_PARENT (pad, parent, no_parent);
   GST_OBJECT_UNLOCK (pad);
@@ -4093,15 +4140,21 @@ wrong_mode:
     gst_mini_object_unref (GST_MINI_OBJECT_CAST (data));
     return GST_FLOW_ERROR;
   }
+probe_handled:
+  handled = TRUE;
+  /* PASSTHROUGH */
 probe_stopped:
   {
     GST_OBJECT_UNLOCK (pad);
     GST_PAD_STREAM_UNLOCK (pad);
-    gst_mini_object_unref (GST_MINI_OBJECT_CAST (data));
+    /* We unref the buffer, except if the probe handled it (CUSTOM_SUCCESS_1) */
+    if (!handled)
+      gst_mini_object_unref (GST_MINI_OBJECT_CAST (data));
 
     switch (ret) {
       case GST_FLOW_CUSTOM_SUCCESS:
-        GST_DEBUG_OBJECT (pad, "dropped buffer");
+      case GST_FLOW_CUSTOM_SUCCESS_1:
+        GST_DEBUG_OBJECT (pad, "dropped or handled buffer");
         ret = GST_FLOW_OK;
         break;
       default:
@@ -4234,6 +4287,7 @@ gst_pad_push_data (GstPad * pad, GstPadProbeType type, void *data)
 {
   GstPad *peer;
   GstFlowReturn ret;
+  gboolean handled = FALSE;
 
   GST_OBJECT_LOCK (pad);
   if (G_UNLIKELY (GST_PAD_IS_FLUSHING (pad)))
@@ -4265,14 +4319,15 @@ gst_pad_push_data (GstPad * pad, GstPadProbeType type, void *data)
     goto events_error;
 
   /* do block probes */
-  PROBE_PUSH (pad, type | GST_PAD_PROBE_TYPE_BLOCK, data, probe_stopped);
+  PROBE_HANDLE (pad, type | GST_PAD_PROBE_TYPE_BLOCK, data, probe_stopped,
+      probe_handled);
 
   /* recheck sticky events because the probe might have cause a relink */
   if (G_UNLIKELY ((ret = check_sticky (pad, NULL))) != GST_FLOW_OK)
     goto events_error;
 
   /* do post-blocking probes */
-  PROBE_PUSH (pad, type, data, probe_stopped);
+  PROBE_HANDLE (pad, type, data, probe_stopped, probe_handled);
 
   if (G_UNLIKELY ((peer = GST_PAD_PEER (pad)) == NULL))
     goto not_linked;
@@ -4283,6 +4338,7 @@ gst_pad_push_data (GstPad * pad, GstPadProbeType type, void *data)
   GST_OBJECT_UNLOCK (pad);
 
   ret = gst_pad_chain_data_unchecked (peer, type, data);
+  data = NULL;
 
   gst_object_unref (peer);
 
@@ -4335,23 +4391,26 @@ events_error:
     gst_mini_object_unref (GST_MINI_OBJECT_CAST (data));
     return ret;
   }
+probe_handled:
+  handled = TRUE;
+  /* PASSTHROUGH */
 probe_stopped:
   {
     GST_OBJECT_UNLOCK (pad);
-    pad->ABI.abi.last_flowret =
-        ret == GST_FLOW_CUSTOM_SUCCESS ? GST_FLOW_OK : ret;
-    if (data != NULL)
+    if (data != NULL && !handled)
       gst_mini_object_unref (GST_MINI_OBJECT_CAST (data));
 
     switch (ret) {
       case GST_FLOW_CUSTOM_SUCCESS:
-        GST_DEBUG_OBJECT (pad, "dropped buffer");
+      case GST_FLOW_CUSTOM_SUCCESS_1:
+        GST_DEBUG_OBJECT (pad, "dropped or handled buffer");
         ret = GST_FLOW_OK;
         break;
       default:
         GST_DEBUG_OBJECT (pad, "an error occurred %s", gst_flow_get_name (ret));
         break;
     }
+    pad->ABI.abi.last_flowret = ret;
     return ret;
   }
 not_linked:
@@ -5118,9 +5177,13 @@ inactive:
 probe_stopped:
   {
     GST_OBJECT_FLAG_SET (pad, GST_PAD_FLAG_PENDING_EVENTS);
-    gst_event_unref (event);
+    if (ret != GST_FLOW_CUSTOM_SUCCESS_1)
+      gst_event_unref (event);
 
     switch (ret) {
+      case GST_FLOW_CUSTOM_SUCCESS_1:
+        GST_DEBUG_OBJECT (pad, "handled event");
+        break;
       case GST_FLOW_CUSTOM_SUCCESS:
         GST_DEBUG_OBJECT (pad, "dropped event");
         break;
@@ -5218,7 +5281,8 @@ gst_pad_push_event (GstPad * pad, GstEvent * event)
     /* other events are pushed right away */
     ret = gst_pad_push_event_unchecked (pad, event, type);
     /* dropped events by a probe are not an error */
-    res = (ret == GST_FLOW_OK || ret == GST_FLOW_CUSTOM_SUCCESS);
+    res = (ret == GST_FLOW_OK || ret == GST_FLOW_CUSTOM_SUCCESS
+        || ret == GST_FLOW_CUSTOM_SUCCESS_1);
   } else {
     /* Errors in sticky event pushing are no problem and ignored here
      * as they will cause more meaningful errors during data flow.
@@ -5488,11 +5552,14 @@ probe_stopped:
     GST_OBJECT_UNLOCK (pad);
     if (need_unlock)
       GST_PAD_STREAM_UNLOCK (pad);
-    gst_event_unref (event);
+    /* Only unref if unhandled */
+    if (ret != GST_FLOW_CUSTOM_SUCCESS_1)
+      gst_event_unref (event);
 
     switch (ret) {
+      case GST_FLOW_CUSTOM_SUCCESS_1:
       case GST_FLOW_CUSTOM_SUCCESS:
-        GST_DEBUG_OBJECT (pad, "dropped event");
+        GST_DEBUG_OBJECT (pad, "dropped or handled event");
         ret = GST_FLOW_OK;
         break;
       default:
