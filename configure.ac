@@ -4,7 +4,7 @@ dnl initialize autoconf
 dnl when going to/from release please set the nano (fourth number) right !
 dnl releases only do Wall, git and prerelease does Werror too
 dnl
-AC_INIT([GStreamer],[1.5.90],[http://bugzilla.gnome.org/enter_bug.cgi?product=GStreamer],[gstreamer])
+AC_INIT([GStreamer],[1.5.91],[http://bugzilla.gnome.org/enter_bug.cgi?product=GStreamer],[gstreamer])
 AG_GST_INIT
 
 dnl initialize automake (we require GNU make)
@@ -622,6 +622,14 @@ AC_CHECK_HEADERS([poll.h], [], [], [AC_INCLUDES_DEFAULT])
 AC_CHECK_FUNCS([poll])
 AC_CHECK_FUNCS([ppoll])
 AC_CHECK_FUNCS([pselect])
+
+dnl check for socketpair()
+AC_CHECK_FUNC(socketpair, [], [
+  AC_CHECK_LIB(socket, socketpair, [
+    SOCKET_LIBS="-lsocket"
+    AC_SUBST(SOCKET_LIBS)
+  ])
+])
 
 dnl ****************************************
 dnl *** GLib POLL* compatibility defines ***

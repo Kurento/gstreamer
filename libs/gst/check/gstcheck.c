@@ -794,6 +794,7 @@ gst_check_abi_list (GstCheckABIStruct list[], gboolean have_abi_sizes)
       if (!g_file_set_contents (fn, s->str, s->len, &err)) {
         g_print ("%s", s->str);
         g_printerr ("\nFailed to write ABI information: %s\n", err->message);
+        g_clear_error (&err);
       } else {
         g_print ("\nWrote ABI information to '%s'.\n", fn);
       }
@@ -1015,17 +1016,16 @@ gst_check_object_destroyed_on_unref (gpointer object_to_unref)
 
 /* For ABI compatibility with GStreamer < 1.5 */
 void
-_fail_unless (int result, const char *file, int line, const char *expr, ...)
-G_GNUC_PRINTF (4, 5);
+_fail_unless (int result, const char *file, int line, const char *expr, ...);
 
-void _fail_unless (int result, const char *file, int line,
-    const char *expr, ...)
+void
+_fail_unless (int result, const char *file, int line, const char *expr, ...)
 {
   gchar *msg;
   va_list args;
 
   if (result) {
-    _mark_point(file, line);
+    _mark_point (file, line);
     return;
   }
 
