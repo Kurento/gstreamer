@@ -23,8 +23,7 @@
  * SECTION:gsttracerfactory
  * @short_description: Information about registered tracer functions
  *
- * Use gst_tracer_factory_get_list() to get a list of tracer factories known to
- * GStreamer.
+ * Last reviewed on 2012-10-24 (1.2.X)
  */
 
 #include "gst_private.h"
