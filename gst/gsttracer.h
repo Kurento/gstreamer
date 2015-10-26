@@ -53,6 +53,8 @@ struct _GstTracer {
   gpointer _gst_reserved[GST_PADDING];
 };
 
+typedef void (*GstTracerHookFunction) (GstTracer * self, va_list var_args);
+
 struct _GstTracerClass {
   GstObjectClass parent_class;
     
@@ -63,9 +65,9 @@ struct _GstTracerClass {
 GType gst_tracer_get_type          (void);
 
 void gst_tracer_register_hook (GstTracer *tracer, const gchar *detail, 
-  GCallback func);
+  GstTracerHookFunction func);
 void gst_tracer_register_hook_id (GstTracer *tracer, GQuark detail, 
-  GCallback func);
+  GstTracerHookFunction func);
 
 void gst_tracer_log_trace (GstStructure * s);
 

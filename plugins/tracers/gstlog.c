@@ -53,113 +53,100 @@ G_DEFINE_TYPE_WITH_CODE (GstLogTracer, gst_log_tracer, GST_TYPE_TRACER,
     _do_init);
 
 static void
-do_log (GstDebugCategory * cat, const char *fmt, ...)
+do_log (GstDebugCategory * cat, const char *format, va_list var_args)
 {
-  va_list var_args;
-
-  va_start (var_args, fmt);
-  gst_debug_log_valist (cat, GST_LEVEL_TRACE, "", "", 0, NULL, fmt, var_args);
-  va_end (var_args);
+  gst_debug_log_valist (cat, GST_LEVEL_TRACE, "", "", 0, NULL,
+      format, var_args);
 }
 
 static void
-do_push_buffer_pre (GstTracer * self, guint64 ts, GstPad * pad,
-    GstBuffer * buffer)
+do_push_buffer_pre (GstTracer * self, va_list var_args)
 {
   do_log (GST_CAT_BUFFER,
       "%" GST_TIME_FORMAT ", pad=%" GST_PTR_FORMAT ", buffer=%" GST_PTR_FORMAT,
-      ts, pad, buffer);
+      var_args);
 }
 
 static void
-do_push_buffer_post (GstTracer * self, guint64 ts, GstPad * pad,
-    GstFlowReturn res)
+do_push_buffer_post (GstTracer * self, va_list var_args)
 {
   do_log (GST_CAT_BUFFER,
-      "%" GST_TIME_FORMAT ", pad=%" GST_PTR_FORMAT ", res=%d", ts, pad, res);
+      "%" GST_TIME_FORMAT ", pad=%" GST_PTR_FORMAT ", res=%d", var_args);
 }
 
 static void
-do_push_buffer_list_pre (GstTracer * self, guint64 ts, GstPad * pad,
-    GstBufferList * list)
+do_push_buffer_list_pre (GstTracer * self, va_list var_args)
 {
   do_log (GST_CAT_BUFFER_LIST,
-      "%" GST_TIME_FORMAT ", pad=%" GST_PTR_FORMAT ", list=%p", ts, pad, list);
+      "%" GST_TIME_FORMAT ", pad=%" GST_PTR_FORMAT ", list=%p", var_args);
 }
 
 static void
-do_push_buffer_list_post (GstTracer * self, guint64 ts, GstPad * pad,
-    GstFlowReturn res)
+do_push_buffer_list_post (GstTracer * self, va_list var_args)
 {
   do_log (GST_CAT_BUFFER_LIST,
-      "%" GST_TIME_FORMAT ", pad=%" GST_PTR_FORMAT ", res=%d", ts, pad, res);
+      "%" GST_TIME_FORMAT ", pad=%" GST_PTR_FORMAT ", res=%d", var_args);
 }
 
 static void
-do_pull_range_pre (GstTracer * self, guint64 ts, GstPad * pad, guint64 offset,
-    guint size)
+do_pull_range_pre (GstTracer * self, va_list var_args)
 {
   do_log (GST_CAT_BUFFER,
       "%" GST_TIME_FORMAT ", pad=%" GST_PTR_FORMAT ", offset=%" G_GUINT64_FORMAT
-      ", size=%u", ts, pad, offset, size);
+      ", size=%u", var_args);
 }
 
 static void
-do_pull_range_post (GstTracer * self, guint64 ts, GstPad * pad,
-    GstBuffer * buffer, GstFlowReturn res)
+do_pull_range_post (GstTracer * self, va_list var_args)
 {
   do_log (GST_CAT_BUFFER,
       "%" GST_TIME_FORMAT ", pad=%" GST_PTR_FORMAT ", buffer=%" GST_PTR_FORMAT
-      ", res=%d", ts, pad, buffer, res);
+      ", res=%d", var_args);
 }
 
 static void
-do_push_event_pre (GstTracer * self, guint64 ts, GstPad * pad, GstEvent * event)
+do_push_event_pre (GstTracer * self, va_list var_args)
 {
   do_log (GST_CAT_EVENT,
       "%" GST_TIME_FORMAT ", pad=%" GST_PTR_FORMAT ", event=%" GST_PTR_FORMAT,
-      ts, pad, event);
+      var_args);
 }
 
 static void
-do_push_event_post (GstTracer * self, guint64 ts, GstPad * pad, gboolean res)
+do_push_event_post (GstTracer * self, va_list var_args)
 {
   do_log (GST_CAT_EVENT,
-      "%" GST_TIME_FORMAT ", pad=%" GST_PTR_FORMAT ", res=%d", ts, pad, res);
+      "%" GST_TIME_FORMAT ", pad=%" GST_PTR_FORMAT ", res=%d", var_args);
 }
 
 static void
-do_post_message_pre (GstTracer * self, guint64 ts, GstElement * elem,
-    GstMessage * msg)
+do_post_message_pre (GstTracer * self, va_list var_args)
 {
   do_log (GST_CAT_EVENT,
       "%" GST_TIME_FORMAT ", element=%" GST_PTR_FORMAT ", message=%"
-      GST_PTR_FORMAT, ts, elem, msg);
+      GST_PTR_FORMAT, var_args);
 }
 
 static void
-do_post_message_post (GstTracer * self, guint64 ts, GstElement * elem,
-    gboolean res)
+do_post_message_post (GstTracer * self, va_list var_args)
 {
   do_log (GST_CAT_EVENT,
-      "%" GST_TIME_FORMAT ", element=%" GST_PTR_FORMAT ", res=%d", ts, elem,
-      res);
+      "%" GST_TIME_FORMAT ", element=%" GST_PTR_FORMAT ", res=%d", var_args);
 }
 
 static void
-do_query_pre (GstTracer * self, guint64 ts, GstElement * elem, GstQuery * query)
+do_query_pre (GstTracer * self, va_list var_args)
 {
   do_log (GST_CAT_QUERY,
       "%" GST_TIME_FORMAT ", element=%" GST_PTR_FORMAT ", query=%"
-      GST_PTR_FORMAT, ts, elem, query);
+      GST_PTR_FORMAT, var_args);
 }
 
 static void
-do_query_post (GstTracer * self, guint64 ts, GstElement * elem, gboolean res)
+do_query_post (GstTracer * self, va_list var_args)
 {
   do_log (GST_CAT_QUERY,
-      "%" GST_TIME_FORMAT ", element=%" GST_PTR_FORMAT ", res=%d", ts, elem,
-      res);
+      "%" GST_TIME_FORMAT ", element=%" GST_PTR_FORMAT ", res=%d", var_args);
 }
 
 
@@ -175,28 +162,20 @@ gst_log_tracer_init (GstLogTracer * self)
 {
   GstTracer *tracer = GST_TRACER (self);
 
-  gst_tracer_register_hook (tracer, "pad-push-pre",
-      G_CALLBACK (do_push_buffer_pre));
-  gst_tracer_register_hook (tracer, "pad-push-post",
-      G_CALLBACK (do_push_buffer_post));
+  gst_tracer_register_hook (tracer, "pad-push-pre", do_push_buffer_pre);
+  gst_tracer_register_hook (tracer, "pad-push-post", do_push_buffer_post);
   gst_tracer_register_hook (tracer, "pad-push-list-pre",
-      G_CALLBACK (do_push_buffer_list_pre));
+      do_push_buffer_list_pre);
   gst_tracer_register_hook (tracer, "pad-push-list-post",
-      G_CALLBACK (do_push_buffer_list_post));
-  gst_tracer_register_hook (tracer, "pad-pull-range-pre",
-      G_CALLBACK (do_pull_range_pre));
-  gst_tracer_register_hook (tracer, "pad-pull-range-post",
-      G_CALLBACK (do_pull_range_post));
-  gst_tracer_register_hook (tracer, "pad-push-event-pre",
-      G_CALLBACK (do_push_event_pre));
-  gst_tracer_register_hook (tracer, "pad-push-event-post",
-      G_CALLBACK (do_push_event_post));
+      do_push_buffer_list_post);
+  gst_tracer_register_hook (tracer, "pad-pull-range-pre", do_pull_range_pre);
+  gst_tracer_register_hook (tracer, "pad-pull-range-post", do_pull_range_post);
+  gst_tracer_register_hook (tracer, "pad-push-event-pre", do_push_event_pre);
+  gst_tracer_register_hook (tracer, "pad-push-event-post", do_push_event_post);
   gst_tracer_register_hook (tracer, "element-post-message-pre",
-      G_CALLBACK (do_post_message_pre));
+      do_post_message_pre);
   gst_tracer_register_hook (tracer, "element-post-message-post",
-      G_CALLBACK (do_post_message_post));
-  gst_tracer_register_hook (tracer, "element-query-pre",
-      G_CALLBACK (do_query_pre));
-  gst_tracer_register_hook (tracer, "element-query-post",
-      G_CALLBACK (do_query_post));
+      do_post_message_post);
+  gst_tracer_register_hook (tracer, "element-query-pre", do_query_pre);
+  gst_tracer_register_hook (tracer, "element-query-post", do_query_post);
 }

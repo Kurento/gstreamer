@@ -146,9 +146,10 @@ free_thread_stats (gpointer data)
 }
 
 static void
-do_stats (GstTracer * obj, guint64 ts)
+do_stats (GstTracer * obj, va_list var_args)
 {
   GstRUsageTracer *self = GST_RUSAGE_TRACER_CAST (obj);
+  guint64 ts = va_arg (var_args, guint64);
   GstThreadStats *stats;
   gpointer thread_id = g_thread_self ();
   guint avg_cpuload, cur_cpuload;
@@ -347,7 +348,7 @@ gst_rusage_tracer_init (GstRUsageTracer * self)
 {
   GstTracer *tracer = GST_TRACER (self);
 
-  gst_tracer_register_hook_id (tracer, 0, G_CALLBACK (do_stats));
+  gst_tracer_register_hook_id (tracer, 0, do_stats);
 
   self->threads = g_hash_table_new_full (NULL, NULL, NULL, free_thread_stats);
   self->tvs_proc = make_trace_values (GST_SECOND);
