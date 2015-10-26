@@ -25,14 +25,11 @@
 
 #include <gst/gst.h>
 #include "gstlog.h"
-#include "gststats.h"
 
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
   if (!gst_tracer_register (plugin, "log", gst_log_tracer_get_type ()))
-    return FALSE;
-  if (!gst_tracer_register (plugin, "stats", gst_stats_tracer_get_type ()))
     return FALSE;
   return TRUE;
 }
