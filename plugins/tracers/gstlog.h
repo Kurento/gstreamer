@@ -23,7 +23,6 @@
 #define __GST_LOG_TRACER_H__
 
 #include <gst/gst.h>
-#include <gst/gsttracer.h>
 
 G_BEGIN_DECLS
 

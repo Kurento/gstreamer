@@ -62,8 +62,6 @@ extern const char             g_log_domain_gstreamer[];
 
 #include "gstdatetime.h"
 
-#include "gsttracerutils.h"
-
 G_BEGIN_DECLS
 
 /* used by gstparse.c and grammar.y */

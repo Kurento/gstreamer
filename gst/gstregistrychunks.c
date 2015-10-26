@@ -31,6 +31,7 @@
 #include <gst/gst_private.h>
 #include <gst/gstconfig.h>
 #include <gst/gstelement.h>
+#include <gst/gsttracer.h>
 #include <gst/gsttracerfactory.h>
 #include <gst/gsttypefind.h>
 #include <gst/gsttypefindfactory.h>
