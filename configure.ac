@@ -980,7 +980,6 @@ libs/gst/helpers/Makefile
 libs/gst/net/Makefile
 plugins/Makefile
 plugins/elements/Makefile
-plugins/tracers/Makefile
 po/Makefile.in
 tests/Makefile
 tests/benchmarks/Makefile
