@@ -4761,8 +4761,6 @@ gst_pad_pull_range (GstPad * pad, guint64 offset, guint size,
   g_return_val_if_fail (*buffer == NULL || (GST_IS_BUFFER (*buffer)
           && gst_buffer_get_size (*buffer) >= size), GST_FLOW_ERROR);
 
-  GST_TRACER_PAD_PULL_RANGE_PRE (pad, offset, size);
-
   GST_OBJECT_LOCK (pad);
   if (G_UNLIKELY (GST_PAD_IS_FLUSHING (pad)))
     goto flushing;
@@ -4809,7 +4807,6 @@ probed_data:
 
   *buffer = res_buf;
 
-  GST_TRACER_PAD_PULL_RANGE_POST (pad, *buffer, ret);
   return ret;
 
   /* ERROR recovery here */
@@ -4819,8 +4816,7 @@ flushing:
         "pullrange, but pad was flushing");
     pad->ABI.abi.last_flowret = GST_FLOW_FLUSHING;
     GST_OBJECT_UNLOCK (pad);
-    ret = GST_FLOW_FLUSHING;
-    goto done;
+    return GST_FLOW_FLUSHING;
   }
 wrong_mode:
   {
@@ -4828,8 +4824,7 @@ wrong_mode:
         GST_DEBUG_PAD_NAME (pad));
     pad->ABI.abi.last_flowret = GST_FLOW_ERROR;
     GST_OBJECT_UNLOCK (pad);
-    ret = GST_FLOW_ERROR;
-    goto done;
+    return GST_FLOW_ERROR;
   }
 probe_stopped:
   {
@@ -4850,7 +4845,7 @@ probe_stopped:
     }
     pad->ABI.abi.last_flowret = ret;
     GST_OBJECT_UNLOCK (pad);
-    goto done;
+    return ret;
   }
 not_linked:
   {
@@ -4858,8 +4853,7 @@ not_linked:
         "pulling range, but it was not linked");
     pad->ABI.abi.last_flowret = GST_FLOW_NOT_LINKED;
     GST_OBJECT_UNLOCK (pad);
-    ret = GST_FLOW_NOT_LINKED;
-    goto done;
+    return GST_FLOW_NOT_LINKED;
   }
 pull_range_failed:
   {
@@ -4868,7 +4862,7 @@ pull_range_failed:
     GST_CAT_LEVEL_LOG (GST_CAT_SCHEDULING,
         (ret >= GST_FLOW_EOS) ? GST_LEVEL_INFO : GST_LEVEL_WARNING,
         pad, "pullrange failed, flow: %s", gst_flow_get_name (ret));
-    goto done;
+    return ret;
   }
 probe_stopped_unref:
   {
@@ -4884,11 +4878,8 @@ probe_stopped_unref:
 
     if (*buffer == NULL)
       gst_buffer_unref (res_buf);
-    goto done;
+    return ret;
   }
-done:
-  GST_TRACER_PAD_PULL_RANGE_POST (pad, NULL, ret);
-  return ret;
 }
 
 /* must be called with pad object lock */
@@ -5237,8 +5228,6 @@ gst_pad_push_event (GstPad * pad, GstEvent * event)
   g_return_val_if_fail (GST_IS_PAD (pad), FALSE);
   g_return_val_if_fail (GST_IS_EVENT (event), FALSE);
 
-  GST_TRACER_PAD_PUSH_EVENT_PRE (pad, event);
-
   if (GST_PAD_IS_SRC (pad)) {
     if (G_UNLIKELY (!GST_EVENT_IS_DOWNSTREAM (event)))
       goto wrong_direction;
@@ -5293,7 +5282,6 @@ gst_pad_push_event (GstPad * pad, GstEvent * event)
   }
   GST_OBJECT_UNLOCK (pad);
 
-  GST_TRACER_PAD_PUSH_EVENT_POST (pad, res);
   return res;
 
   /* ERROR handling */
@@ -5302,30 +5290,28 @@ wrong_direction:
     g_warning ("pad %s:%s pushing %s event in wrong direction",
         GST_DEBUG_PAD_NAME (pad), GST_EVENT_TYPE_NAME (event));
     gst_event_unref (event);
-    goto done;
+    return FALSE;
   }
 unknown_direction:
   {
     g_warning ("pad %s:%s has invalid direction", GST_DEBUG_PAD_NAME (pad));
     gst_event_unref (event);
-    goto done;
+    return FALSE;
   }
 flushed:
   {
     GST_DEBUG_OBJECT (pad, "We're flushing");
     GST_OBJECT_UNLOCK (pad);
     gst_event_unref (event);
-    goto done;
+    return FALSE;
   }
 eos:
   {
     GST_DEBUG_OBJECT (pad, "We're EOS");
     GST_OBJECT_UNLOCK (pad);
-    goto done;
+    gst_event_unref (event);
+    return FALSE;
   }
-done:
-  GST_TRACER_PAD_PUSH_EVENT_POST (pad, FALSE);
-  return FALSE;
 }
 
 /* Check if we can call the event function with the given event */
