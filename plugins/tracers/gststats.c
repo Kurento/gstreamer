@@ -594,30 +594,32 @@ gst_stats_tracer_init (GstStatsTracer * self)
 {
   GstTracer *tracer = GST_TRACER (self);
 
-  gst_tracer_register_hook (tracer, "pad-push-pre",
+  gst_tracer_register_hook (tracer, GST_TRACER_HOOK_ID_PAD_PUSH_PRE,
       (GstTracerHookFunction) do_push_buffer_pre);
-  gst_tracer_register_hook (tracer, "pad-push-post",
+  gst_tracer_register_hook (tracer, GST_TRACER_HOOK_ID_PAD_PUSH_POST,
       (GstTracerHookFunction) do_push_buffer_post);
-  gst_tracer_register_hook (tracer, "pad-push-list-pre",
+  gst_tracer_register_hook (tracer, GST_TRACER_HOOK_ID_PAD_PUSH_LIST_PRE,
       (GstTracerHookFunction) do_push_buffer_list_pre);
-  gst_tracer_register_hook (tracer, "pad-push-list-post",
+  gst_tracer_register_hook (tracer, GST_TRACER_HOOK_ID_PAD_PUSH_LIST_POST,
       (GstTracerHookFunction) do_push_buffer_list_post);
-  gst_tracer_register_hook (tracer, "pad-pull-range-pre",
+  gst_tracer_register_hook (tracer, GST_TRACER_HOOK_ID_PAD_PULL_RANGE_PRE,
       (GstTracerHookFunction) do_pull_range_pre);
-  gst_tracer_register_hook (tracer, "pad-pull-range-post",
+  gst_tracer_register_hook (tracer, GST_TRACER_HOOK_ID_PAD_PULL_RANGE_POST,
       (GstTracerHookFunction) do_pull_range_post);
-  gst_tracer_register_hook (tracer, "pad-push-event-pre",
+  gst_tracer_register_hook (tracer, GST_TRACER_HOOK_ID_PAD_PUSH_EVENT_PRE,
       (GstTracerHookFunction) do_push_event_pre);
-  gst_tracer_register_hook (tracer, "pad-push-event-post",
+  gst_tracer_register_hook (tracer, GST_TRACER_HOOK_ID_PAD_PUSH_EVENT_POST,
       (GstTracerHookFunction) do_push_event_post);
-  gst_tracer_register_hook (tracer, "element-post-message-pre",
+  gst_tracer_register_hook (tracer, GST_TRACER_HOOK_ID_ELEMENT_POST_MESSAGE_PRE,
       (GstTracerHookFunction) do_post_message_pre);
-  gst_tracer_register_hook (tracer, "element-post-message-post",
+  gst_tracer_register_hook (tracer,
+      GST_TRACER_HOOK_ID_ELEMENT_POST_MESSAGE_POST,
       (GstTracerHookFunction) do_post_message_post);
-  gst_tracer_register_hook (tracer, "element-query-pre",
+  gst_tracer_register_hook (tracer, GST_TRACER_HOOK_ID_ELEMENT_QUERY_PRE,
       (GstTracerHookFunction) do_query_pre);
-  gst_tracer_register_hook (tracer, "element-query-post",
+  gst_tracer_register_hook (tracer, GST_TRACER_HOOK_ID_ELEMENT_QUERY_POST,
       (GstTracerHookFunction) do_query_post);
+
 
   self->elements = g_ptr_array_new_with_free_func (free_element_stats);
   self->pads = g_ptr_array_new_with_free_func (free_pad_stats);

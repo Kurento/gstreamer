@@ -340,8 +340,11 @@ static void
 gst_rusage_tracer_init (GstRUsageTracer * self)
 {
   GstTracer *tracer = GST_TRACER (self);
+  gint i;
 
-  gst_tracer_register_hook_id (tracer, 0, do_stats);
+  for (i = 0; i < GST_TRACER_HOOK_ID_LAST; i++) {
+    gst_tracer_register_hook (tracer, i, do_stats);
+  }
 
   self->threads = g_hash_table_new_full (NULL, NULL, NULL, free_thread_stats);
 
