@@ -21,6 +21,7 @@
 
 #include "gst_private.h"
 #include "gstenumtypes.h"
+#include "gstquark.h"
 #include "gstregistry.h"
 #include "gsttracer.h"
 #include "gsttracerfactory.h"
@@ -123,14 +124,14 @@ gst_tracer_get_property (GObject * object, guint prop_id,
 }
 
 static void
-gst_tracer_invoke (GstTracer * self, GstTracerHookId hid,
-    GstTracerMessageId mid, va_list var_args)
+gst_tracer_invoke (GstTracer * self, GstTracerHookId id, guint64 ts,
+    GstStructure * s)
 {
   GstTracerClass *klass = GST_TRACER_GET_CLASS (self);
 
   g_return_if_fail (klass->invoke);
 
-  klass->invoke (self, hid, mid, var_args);
+  klass->invoke (self, id, ts, s);
 }
 
 /* tracing modules */
@@ -192,9 +193,9 @@ gst_tracer_register (GstPlugin * plugin, const gchar * name, GType type)
 
 /* tracing helpers */
 
-gboolean _priv_tracer_enabled = FALSE;
-/* TODO(ensonic): use GPtrArray ? */
-GList *_priv_tracers[GST_TRACER_HOOK_ID_LAST] = { NULL, };
+static gboolean tracer_enabled = FALSE;
+
+static GList *tracers[GST_TRACER_HOOK_ID_LAST] = { NULL, };
 
 /* Initialize the debugging system */
 void
@@ -234,7 +235,7 @@ _priv_gst_tracer_init (void)
             j = 0;
             while (mask && (j < GST_TRACER_HOOK_ID_LAST)) {
               if (mask & 1) {
-                _priv_tracers[j] = g_list_prepend (_priv_tracers[j],
+                tracers[j] = g_list_prepend (tracers[j],
                     gst_object_ref (tracer));
                 GST_WARNING_OBJECT (tracer, "added tracer to hook %d", j);
               }
@@ -242,7 +243,7 @@ _priv_gst_tracer_init (void)
               j++;
             }
 
-            _priv_tracer_enabled = TRUE;
+            tracer_enabled = TRUE;
           } else {
             GST_WARNING_OBJECT (tracer,
                 "tracer with zero mask won't have any effect");
@@ -269,26 +270,64 @@ _priv_gst_tracer_deinit (void)
 
   /* shutdown tracers for final reports */
   for (i = 0; i < GST_TRACER_HOOK_ID_LAST; i++) {
-    for (node = _priv_tracers[i]; node; node = g_list_next (node)) {
+    for (node = tracers[i]; node; node = g_list_next (node)) {
       gst_object_unref (node->data);
     }
-    g_list_free (_priv_tracers[i]);
-    _priv_tracers[i] = NULL;
+    g_list_free (tracers[i]);
+    tracers[i] = NULL;
   }
-  _priv_tracer_enabled = FALSE;
+}
+
+gboolean
+gst_tracer_is_enabled (GstTracerHookId id)
+{
+  return tracer_enabled && (tracers[id] != NULL);
+}
+
+static void
+dispatch (GstTracerHookId id, guint64 ts, GstStructure * s)
+{
+  GList *node;
+  for (node = tracers[id]; node; node = g_list_next (node)) {
+    gst_tracer_invoke (node->data, id, ts, s);
+  }
+}
+
+/* tracing hooks */
+void
+gst_tracer_push_pre (guint64 ts, GstPad * pad, GstBuffer * buffer)
+{
+  dispatch (GST_TRACER_HOOK_ID_BUFFERS, ts,
+      gst_structure_new_id (GST_QUARK (PUSH_BUFFER_PRE),
+          GST_QUARK (PAD), GST_TYPE_PAD, pad,
+          GST_QUARK (BUFFER), GST_TYPE_BUFFER, buffer, NULL));
 }
 
 void
-gst_tracer_dispatch (GstTracerHookId hid, GstTracerMessageId mid, ...)
+gst_tracer_push_post (guint64 ts, GstPad * pad, GstFlowReturn res)
 {
-  va_list var_args;
-  GList *node;
+  dispatch (GST_TRACER_HOOK_ID_BUFFERS, ts,
+      gst_structure_new_id (GST_QUARK (PUSH_BUFFER_POST),
+          GST_QUARK (PAD), GST_TYPE_PAD, pad,
+          GST_QUARK (RETURN), G_TYPE_INT, res, NULL));
+}
 
-  for (node = _priv_tracers[hid]; node; node = g_list_next (node)) {
-    va_start (var_args, mid);
-    gst_tracer_invoke (node->data, hid, mid, var_args);
-    va_end (var_args);
-  }
+void
+gst_tracer_push_list_pre (guint64 ts, GstPad * pad, GstBufferList * list)
+{
+  dispatch (GST_TRACER_HOOK_ID_BUFFERS, ts,
+      gst_structure_new_id (GST_QUARK (PUSH_BUFFER_LIST_PRE),
+          GST_QUARK (PAD), GST_TYPE_PAD, pad,
+          GST_QUARK (LIST), GST_TYPE_BUFFER_LIST, list, NULL));
+}
+
+void
+gst_tracer_push_list_post (guint64 ts, GstPad * pad, GstFlowReturn res)
+{
+  dispatch (GST_TRACER_HOOK_ID_BUFFERS, ts,
+      gst_structure_new_id (GST_QUARK (PUSH_BUFFER_LIST_POST),
+          GST_QUARK (PAD), GST_TYPE_PAD, pad,
+          GST_QUARK (RETURN), G_TYPE_INT, res, NULL));
 }
 
 #endif /* GST_DISABLE_GST_DEBUG */

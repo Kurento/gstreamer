@@ -35,7 +35,7 @@ G_DEFINE_TYPE_WITH_CODE (GstLogTracer, gst_log_tracer, GST_TYPE_TRACER,
     _do_init);
 
 static void gst_log_tracer_invoke (GstTracer * self, GstTracerHookId id,
-    GstTracerMessageId mid, va_list var_args);
+    guint64 ts, GstStructure * s);
 
 static void
 gst_log_tracer_class_init (GstLogTracerClass * klass)
@@ -52,16 +52,17 @@ gst_log_tracer_init (GstLogTracer * self)
 }
 
 static void
-gst_log_tracer_invoke (GstTracer * self, GstTracerHookId hid,
-    GstTracerMessageId mid, va_list var_args)
+gst_log_tracer_invoke (GstTracer * self, GstTracerHookId id, guint64 ts,
+    GstStructure * s)
 {
-  guint64 ts = va_arg (var_args, guint64);
-  /* TODO(ensonic): log to different categories depending on 'hid'/'mid'
+  gchar *str = gst_structure_to_string (s);
+  /* TODO(ensonic): log to different categories depending on 'id'
    * GST_TRACER_HOOK_ID_BUFFERS  -> GST_CAT_BUFFER
    * GST_TRACER_HOOK_ID_EVENTS   -> GST_CAT_EVENT
    * GST_TRACER_HOOK_ID_MESSAGES -> GST_CAT_MESSAGE
    * GST_TRACER_HOOK_ID_QUERIES  -> ?
    * GST_TRACER_HOOK_ID_TOPLOGY  -> ?
    */
-  GST_TRACE ("[%d,%d] %" GST_TIME_FORMAT, hid, mid, GST_TIME_ARGS (ts));
+  GST_TRACE ("%s", str);
+  g_free (str);
 }
