@@ -37,8 +37,7 @@ GST_DEBUG_CATEGORY_STATIC (gst_stats_debug);
 #define GST_CAT_DEFAULT gst_stats_debug
 
 static GQuark data_quark;
-G_LOCK_DEFINE (_elem_stats);
-G_LOCK_DEFINE (_pad_stats);
+G_LOCK_DEFINE (_stats);
 
 #define _do_init \
     GST_DEBUG_CATEGORY_INIT (gst_stats_debug, "stats", 0, "stats tracer"); \
@@ -94,12 +93,6 @@ log_new_element_stats (GstElementStats * stats, GstElement * element)
           "is-bin", G_TYPE_BOOLEAN, GST_IS_BIN (element), NULL));
 }
 
-static void
-free_element_stats (gpointer data)
-{
-  g_slice_free (GstElementStats, data);
-}
-
 static inline GstElementStats *
 get_element_stats (GstStatsTracer * self, GstElement * element)
 {
@@ -111,14 +104,16 @@ get_element_stats (GstStatsTracer * self, GstElement * element)
     return &no_elem_stats;
   }
 
-  G_LOCK (_elem_stats);
+  G_LOCK (_stats);
   if (!(stats = g_object_get_qdata ((GObject *) element, data_quark))) {
     stats = fill_element_stats (self, element);
-    g_object_set_qdata_full ((GObject *) element, data_quark, stats,
-        free_element_stats);
+    g_object_set_qdata ((GObject *) element, data_quark, stats);
+    if (self->elements->len <= stats->index)
+      g_ptr_array_set_size (self->elements, stats->index + 1);
+    g_ptr_array_index (self->elements, stats->index) = stats;
     is_new = TRUE;
   }
-  G_UNLOCK (_elem_stats);
+  G_UNLOCK (_stats);
   if (G_UNLIKELY (stats->parent_ix == G_MAXUINT)) {
     GstElement *parent = GST_ELEMENT_PARENT (element);
     if (parent) {
@@ -130,6 +125,12 @@ get_element_stats (GstStatsTracer * self, GstElement * element)
     log_new_element_stats (stats, element);
   }
   return stats;
+}
+
+static void
+free_element_stats (gpointer data)
+{
+  g_slice_free (GstElementStats, data);
 }
 
 /*
@@ -191,12 +192,6 @@ log_new_pad_stats (GstPadStats * stats, GstPad * pad)
           "thread-id", G_TYPE_UINT, GPOINTER_TO_UINT (g_thread_self ()), NULL));
 }
 
-static void
-free_pad_stats (gpointer data)
-{
-  g_slice_free (GstPadStats, data);
-}
-
 static GstPadStats *
 get_pad_stats (GstStatsTracer * self, GstPad * pad)
 {
@@ -208,14 +203,16 @@ get_pad_stats (GstStatsTracer * self, GstPad * pad)
     return &no_pad_stats;
   }
 
-  G_LOCK (_pad_stats);
+  G_LOCK (_stats);
   if (!(stats = g_object_get_qdata ((GObject *) pad, data_quark))) {
     stats = fill_pad_stats (self, pad);
-    g_object_set_qdata_full ((GObject *) pad, data_quark, stats,
-        free_pad_stats);
+    g_object_set_qdata ((GObject *) pad, data_quark, stats);
+    if (self->pads->len <= stats->index)
+      g_ptr_array_set_size (self->pads, stats->index + 1);
+    g_ptr_array_index (self->pads, stats->index) = stats;
     is_new = TRUE;
   }
-  G_UNLOCK (_pad_stats);
+  G_UNLOCK (_stats);
   if (G_UNLIKELY (stats->parent_ix == G_MAXUINT)) {
     GstElement *elem = get_real_pad_parent (pad);
     if (elem) {
@@ -228,6 +225,12 @@ get_pad_stats (GstStatsTracer * self, GstPad * pad)
     log_new_pad_stats (stats, pad);
   }
   return stats;
+}
+
+static void
+free_pad_stats (gpointer data)
+{
+  g_slice_free (GstPadStats, data);
 }
 
 static void
@@ -451,6 +454,15 @@ do_push_event_pre (GstStatsTracer * self, va_list var_args)
 }
 
 static void
+do_push_event_post (GstStatsTracer * self, va_list var_args)
+{
+#if 0
+  guint64 ts = va_arg (var_args, guint64);
+  GstPad *pad = va_arg (var_args, GstPad *);
+#endif
+}
+
+static void
 do_post_message_pre (GstStatsTracer * self, va_list var_args)
 {
   guint64 ts = va_arg (var_args, guint64);
@@ -466,6 +478,15 @@ do_post_message_pre (GstStatsTracer * self, va_list var_args)
 }
 
 static void
+do_post_message_post (GstStatsTracer * self, va_list var_args)
+{
+#if 0
+  guint64 ts = va_arg (var_args, guint64);
+  GstElement *elem = va_arg (var_args, GstElement *);
+#endif
+}
+
+static void
 do_query_pre (GstStatsTracer * self, va_list var_args)
 {
   guint64 ts = va_arg (var_args, guint64);
@@ -478,6 +499,15 @@ do_query_pre (GstStatsTracer * self, va_list var_args)
           "ts", G_TYPE_UINT64, ts,
           "elem-ix", G_TYPE_UINT, stats->index,
           "name", G_TYPE_STRING, GST_QUERY_TYPE_NAME (qry), NULL));
+}
+
+static void
+do_query_post (GstStatsTracer * self, va_list var_args)
+{
+#if 0
+  guint64 ts = va_arg (var_args, guint64);
+  GstElement *elem = va_arg (var_args, GstElement *);
+#endif
 }
 
 /* tracer class */
@@ -578,8 +608,17 @@ gst_stats_tracer_init (GstStatsTracer * self)
       (GstTracerHookFunction) do_pull_range_post);
   gst_tracer_register_hook (tracer, "pad-push-event-pre",
       (GstTracerHookFunction) do_push_event_pre);
+  gst_tracer_register_hook (tracer, "pad-push-event-post",
+      (GstTracerHookFunction) do_push_event_post);
   gst_tracer_register_hook (tracer, "element-post-message-pre",
       (GstTracerHookFunction) do_post_message_pre);
+  gst_tracer_register_hook (tracer, "element-post-message-post",
+      (GstTracerHookFunction) do_post_message_post);
   gst_tracer_register_hook (tracer, "element-query-pre",
       (GstTracerHookFunction) do_query_pre);
+  gst_tracer_register_hook (tracer, "element-query-post",
+      (GstTracerHookFunction) do_query_post);
+
+  self->elements = g_ptr_array_new_with_free_func (free_element_stats);
+  self->pads = g_ptr_array_new_with_free_func (free_pad_stats);
 }

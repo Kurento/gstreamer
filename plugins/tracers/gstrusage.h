@@ -42,18 +42,6 @@ G_BEGIN_DECLS
 typedef struct _GstRUsageTracer GstRUsageTracer;
 typedef struct _GstRUsageTracerClass GstRUsageTracerClass;
 
-typedef struct
-{
-  GstClockTime ts;
-  GstClockTime val;
-} GstTraceValue;
-
-typedef struct
-{
-  GstClockTime window;
-  GQueue values;                /* GstTraceValue* */
-} GstTraceValues;
-
 /**
  * GstRUsageTracer:
  *
@@ -64,11 +52,6 @@ struct _GstRUsageTracer {
 
   /*< private >*/        
   GHashTable *threads;
-  GstTraceValues *tvs_proc;
-
-  /* for ts calibration */
-  gpointer main_thread_id;
-  guint64 tproc_base;
 };
 
 struct _GstRUsageTracerClass {
