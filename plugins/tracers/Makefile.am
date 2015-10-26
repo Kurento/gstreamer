@@ -1,16 +1,9 @@
 
 plugin_LTLIBRARIES = libgstcoretracers.la
 
-if HAVE_GETRUSAGE
-RUSAGE_SOURCES = gstrusage.c
-else
-RUSAGE_SOURCES =
-endif
-
 libgstcoretracers_la_DEPENDENCIES = $(top_builddir)/gst/libgstreamer-@GST_API_VERSION@.la
 libgstcoretracers_la_SOURCES = \
   gstlog.c \
-  $(RUSAGE_SOURCES) \
   gststats.c \
 	gsttracers.c
 
@@ -23,7 +16,6 @@ libgstcoretracers_la_LIBTOOLFLAGS = $(GST_PLUGIN_LIBTOOLFLAGS)
 
 noinst_HEADERS = \
   gstlog.h \
-  gstrusage.h \
   gststats.h
 
 CLEANFILES = *.gcno *.gcda *.gcov *.gcov.out
