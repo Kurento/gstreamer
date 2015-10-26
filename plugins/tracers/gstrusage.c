@@ -44,14 +44,11 @@ GST_DEBUG_CATEGORY_STATIC (gst_rusage_debug);
 G_DEFINE_TYPE_WITH_CODE (GstRUsageTracer, gst_rusage_tracer, GST_TYPE_TRACER,
     _do_init);
 
-/* for ts calibration */
-static gpointer main_thread_id = NULL;
-static guint64 tproc_base = G_GINT64_CONSTANT (0);
-
 typedef struct
 {
   /* time spend in this thread */
-  GstClockTime tthread;
+  GstClockTime treal;
+  guint max_cpuload;
 } GstThreadStats;
 
 static void gst_rusage_tracer_invoke (GstTracer * self, GstTracerHookId id,
@@ -78,9 +75,6 @@ gst_rusage_tracer_init (GstRUsageTracer * self)
 {
   g_object_set (self, "mask", GST_TRACER_HOOK_ALL, NULL);
   self->threads = g_hash_table_new_full (NULL, NULL, NULL, free_thread_stats);
-
-  main_thread_id = g_thread_self ();
-  GST_DEBUG ("rusage: main thread=%p", main_thread_id);
 }
 
 static void
@@ -88,12 +82,12 @@ gst_rusage_tracer_invoke (GstTracer * obj, GstTracerHookId hid,
     GstTracerMessageId mid, va_list var_args)
 {
   GstRUsageTracer *self = GST_RUSAGE_TRACER_CAST (obj);
-  guint64 ts = va_arg (var_args, guint64);
+  guint64 treal = va_arg (var_args, guint64);
   GstThreadStats *stats;
   gpointer thread_id = g_thread_self ();
   guint cpuload = 0;
   struct rusage ru;
-  GstClockTime tproc = G_GUINT64_CONSTANT (0);
+  GstClockTime tusersys = G_GUINT64_CONSTANT (0);
 
   // FIXME(ensonic): not threadsafe
   static GstClockTime last_ts = G_GUINT64_CONSTANT (0);
@@ -110,49 +104,30 @@ gst_rusage_tracer_invoke (GstTracer * obj, GstTracerHookId hid,
     struct timespec now;
 
     if (!clock_gettime (CLOCK_PROCESS_CPUTIME_ID, &now)) {
-      tproc = GST_TIMESPEC_TO_TIME (now);
+      tusersys = GST_TIMESPEC_TO_TIME (now);
     } else {
       GST_WARNING ("clock_gettime (CLOCK_PROCESS_CPUTIME_ID,...) failed.");
-      tproc =
+      tusersys =
           GST_TIMEVAL_TO_TIME (ru.ru_utime) + GST_TIMEVAL_TO_TIME (ru.ru_stime);
     }
 
     /* cpu time per thread */
     if (!clock_gettime (CLOCK_THREAD_CPUTIME_ID, &now)) {
-      stats->tthread = GST_TIMESPEC_TO_TIME (now);
+      stats->treal = GST_TIMESPEC_TO_TIME (now);
     } else {
       GST_WARNING ("clock_gettime (CLOCK_THREAD_CPUTIME_ID,...) failed.");
-      stats->tthread += GST_CLOCK_DIFF (last_ts, ts);
+      stats->treal += GST_CLOCK_DIFF (last_ts, treal);
     }
   }
 #else
-  tproc = GST_TIMEVAL_TO_TIME (ru.ru_utime) + GST_TIMEVAL_TO_TIME (ru.ru_stime);
+  tusersys =
+      GST_TIMEVAL_TO_TIME (ru.ru_utime) + GST_TIMEVAL_TO_TIME (ru.ru_stime);
   /* crude way to meassure time spend in which thread */
-  stats->tthread += GST_CLOCK_DIFF (last_ts, ts);
+  stats->treal += GST_CLOCK_DIFF (last_ts, treal);
 #endif
 
-  /* remember last timestamp for fallback calculations */
-  last_ts = ts;
-
-  /* Calibrate ts for the process and main thread. For tthread[main] and tproc
-   * the time is larger than ts, as our base-ts is taken after the process has
-   * started.
-   */
-  if (G_UNLIKELY (thread_id == main_thread_id)) {
-    main_thread_id = NULL;
-    /* when the registry gets updated, the tproc is less than the debug time ? */
-    /* TODO(ensonic): we still see cases where tproc overtakes ts, especially
-     * when with sync=false, can this be due to multiple cores in use? */
-    if (tproc > ts) {
-      tproc_base = tproc - ts;
-      GST_DEBUG ("rusage: calibrating by %" G_GUINT64_FORMAT ", thread: %"
-          G_GUINT64_FORMAT ", proc: %" G_GUINT64_FORMAT,
-          tproc_base, stats->tthread, tproc);
-      stats->tthread -= tproc_base;
-    }
-  }
-  /* we always need to corect proc time */
-  tproc -= tproc_base;
+  /* remember last timestamp for percentage calculations */
+  last_ts = treal;
 
   /* FIXME: how can we take cpu-frequency scaling into account?
    * - looking at /sys/devices/system/cpu/cpu0/cpufreq/
@@ -161,9 +136,9 @@ gst_rusage_tracer_invoke (GstTracer * obj, GstTracerHookId hid,
    *   cpufreq-selector -g performance
    *   cpufreq-selector -g ondemand
    */
-  cpuload = (guint) gst_util_uint64_scale (tproc, G_GINT64_CONSTANT (100), ts);
-  gst_tracer_log_trace (gst_structure_new ("rusage", "ts", G_TYPE_UINT64, ts, "thread-id", G_TYPE_UINT, GPOINTER_TO_UINT (thread_id), "cpuload", G_TYPE_UINT, cpuload,  /* cpu usage per thread - FIXME: not used in gst-stats */
-          "thread-time", G_TYPE_UINT64, stats->tthread, /* time spent in thread */
-          "proc-time", G_TYPE_UINT64, tproc,    /* time spent in process */
+  cpuload =
+      (guint) gst_util_uint64_scale (tusersys, G_GINT64_CONSTANT (100), treal);
+  gst_tracer_log_trace (gst_structure_new ("rusage", "ts", G_TYPE_UINT64, treal, "thread-id", G_TYPE_UINT, GPOINTER_TO_UINT (thread_id), "cpuload", G_TYPE_UINT, cpuload, "treal", G_TYPE_UINT64, stats->treal, /* time in thread */
+          "tsum", G_TYPE_UINT64, tusersys,      /* time in process */
           NULL));
 }
