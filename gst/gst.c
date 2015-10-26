@@ -724,7 +724,7 @@ init_post (GOptionContext * context, GOptionGroup * group, gpointer data,
   GST_INFO ("initialized GStreamer successfully");
 
 #ifndef GST_DISABLE_GST_DEBUG
-  _priv_gst_tracing_init ();
+  _priv_gst_tracer_init ();
 #endif
 
   return TRUE;
@@ -961,7 +961,7 @@ gst_deinit (void)
     return;
   }
 #ifndef GST_DISABLE_GST_DEBUG
-  _priv_gst_tracing_deinit ();
+  _priv_gst_tracer_deinit ();
 #endif
 
   g_thread_pool_set_max_unused_threads (0);
