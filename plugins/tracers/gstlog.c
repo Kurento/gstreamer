@@ -54,13 +54,7 @@ static void
 gst_log_tracer_invoke (GstTracerHookId id, GstStructure * s)
 {
   gchar *str = gst_structure_to_string (s);
-  /* TODO(ensonic): log to different categories depending on 'id'
-   * GST_TRACER_HOOK_ID_BUFFERS  -> GST_CAT_BUFFER
-   * GST_TRACER_HOOK_ID_EVENTS   -> GST_CAT_EVENT
-   * GST_TRACER_HOOK_ID_MESSAGES -> GST_CAT_MESSAGE
-   * GST_TRACER_HOOK_ID_QUERIES  -> ?
-   * GST_TRACER_HOOK_ID_TOPLOGY  -> ?
-   */
+  /* TODO(ensonic): log to different categories depending on 'id' */
   GST_TRACE ("%s", str);
   g_free (str);
 }
