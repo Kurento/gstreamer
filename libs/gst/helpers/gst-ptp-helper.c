@@ -37,6 +37,7 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <net/if.h>
 #include <netinet/in.h>
 #include <string.h>
@@ -98,6 +99,7 @@ have_socket_data_cb (GSocket * socket, GIOCondition condition,
   read = g_socket_receive (socket, buffer, sizeof (buffer), NULL, &err);
   if (read == -1)
     g_error ("Failed to read from socket: %s", err->message);
+  g_clear_error (&err);
 
   if (verbose)
     g_message ("Received %" G_GSSIZE_FORMAT " bytes from %s socket", read,
@@ -111,6 +113,7 @@ have_socket_data_cb (GSocket * socket, GIOCondition condition,
       sizeof (header), &written, &err);
   if (status == G_IO_STATUS_ERROR) {
     g_error ("Failed to write to stdout: %s", err->message);
+    g_clear_error (&err);
   } else if (status == G_IO_STATUS_EOF) {
     g_message ("EOF on stdout");
     exit (0);
@@ -124,6 +127,7 @@ have_socket_data_cb (GSocket * socket, GIOCondition condition,
       g_io_channel_write_chars (stdout_channel, buffer, read, &written, &err);
   if (status == G_IO_STATUS_ERROR) {
     g_error ("Failed to write to stdout: %s", err->message);
+    g_clear_error (&err);
   } else if (status == G_IO_STATUS_EOF) {
     g_message ("EOF on stdout");
     exit (0);
@@ -157,6 +161,7 @@ have_stdin_data_cb (GIOChannel * channel, GIOCondition condition,
       &read, &err);
   if (status == G_IO_STATUS_ERROR) {
     g_error ("Failed to read from stdin: %s", err->message);
+    g_clear_error (&err);
   } else if (status == G_IO_STATUS_EOF) {
     g_message ("EOF on stdin");
     exit (0);
@@ -171,6 +176,7 @@ have_stdin_data_cb (GIOChannel * channel, GIOCondition condition,
   status = g_io_channel_read_chars (channel, buffer, header.size, &read, &err);
   if (status == G_IO_STATUS_ERROR) {
     g_error ("Failed to read from stdin: %s", err->message);
+    g_clear_error (&err);
   } else if (status == G_IO_STATUS_EOF) {
     g_message ("EOF on stdin");
     exit (0);
@@ -192,7 +198,7 @@ have_stdin_data_cb (GIOChannel * channel, GIOCondition condition,
         g_error ("Failed to write to socket: %s", err->message);
       else if (written != header.size)
         g_error ("Unexpected write size: %" G_GSSIZE_FORMAT, written);
-
+      g_clear_error (&err);
       if (verbose)
         g_message ("Sent %" G_GSSIZE_FORMAT " bytes to %s socket", read,
             (header.type == TYPE_EVENT ? "event" : "general"));
@@ -219,12 +225,14 @@ setup_sockets (void)
       G_SOCKET_PROTOCOL_UDP, &err);
   if (!socket_event)
     g_error ("Couldn't create event socket: %s", err->message);
+  g_clear_error (&err);
 
   socket_general =
       g_socket_new (G_SOCKET_FAMILY_IPV4, G_SOCKET_TYPE_DATAGRAM,
       G_SOCKET_PROTOCOL_UDP, &err);
   if (!socket_general)
     g_error ("Couldn't create general socket: %s", err->message);
+  g_clear_error (&err);
 
   /* Bind sockets */
   bind_addr = g_inet_address_new_any (G_SOCKET_FAMILY_IPV4);
@@ -458,18 +466,22 @@ setup_sockets (void)
       if (!g_socket_join_multicast_group (socket_event, mcast_addr, FALSE, NULL,
               &err))
         g_error ("Couldn't join multicast group: %s", err->message);
+      g_clear_error (&err);
       if (!g_socket_join_multicast_group (socket_general, mcast_addr, FALSE,
               NULL, &err))
         g_error ("Couldn't join multicast group: %s", err->message);
+      g_clear_error (&err);
     }
   } else {
     /* Join multicast group without any interface */
     if (!g_socket_join_multicast_group (socket_event, mcast_addr, FALSE, NULL,
             &err))
       g_error ("Couldn't join multicast group: %s", err->message);
+    g_clear_error (&err);
     if (!g_socket_join_multicast_group (socket_general, mcast_addr, FALSE, NULL,
             &err))
       g_error ("Couldn't join multicast group: %s", err->message);
+    g_clear_error (&err);
   }
 
   event_saddr = g_inet_socket_address_new (mcast_addr, PTP_EVENT_PORT);
@@ -592,6 +604,7 @@ write_clock_id (void)
       sizeof (header), &written, &err);
   if (status == G_IO_STATUS_ERROR) {
     g_error ("Failed to write to stdout: %s", err->message);
+    g_clear_error (&err);
   } else if (status == G_IO_STATUS_EOF) {
     g_message ("EOF on stdout");
     exit (0);
@@ -606,6 +619,7 @@ write_clock_id (void)
       (const gchar *) clock_id_array, sizeof (clock_id_array), &written, &err);
   if (status == G_IO_STATUS_ERROR) {
     g_error ("Failed to write to stdout: %s", err->message);
+    g_clear_error (&err);
   } else if (status == G_IO_STATUS_EOF) {
     g_message ("EOF on stdout");
     exit (0);
@@ -654,6 +668,7 @@ main (gint argc, gchar ** argv)
   g_option_context_add_main_entries (opt_ctx, opt_entries, NULL);
   if (!g_option_context_parse (opt_ctx, &argc, &argv, &err))
     g_error ("Error parsing options: %s", err->message);
+  g_clear_error (&err);
   g_option_context_free (opt_ctx);
 
   setup_sockets ();

@@ -4,7 +4,7 @@ dnl initialize autoconf
 dnl when going to/from release please set the nano (fourth number) right !
 dnl releases only do Wall, git and prerelease does Werror too
 dnl
-AC_INIT([GStreamer],[1.5.91],[http://bugzilla.gnome.org/enter_bug.cgi?product=GStreamer],[gstreamer])
+AC_INIT([GStreamer],[1.7.0.1],[http://bugzilla.gnome.org/enter_bug.cgi?product=GStreamer],[gstreamer])
 AG_GST_INIT
 
 dnl initialize automake (we require GNU make)
@@ -62,7 +62,7 @@ dnl      1.2.5 => 205
 dnl      1.10.9 (who knows) => 1009
 dnl
 dnl sets GST_LT_LDFLAGS
-AS_LIBTOOL(GST, 590, 0, 590)
+AS_LIBTOOL(GST, 700, 0, 700)
 
 dnl *** autotools stuff ****
 
@@ -81,6 +81,7 @@ AG_GST_GETTEXT([gstreamer-$GST_API_VERSION])
 dnl *** check for arguments to configure ***
 
 AG_GST_ARG_DISABLE_FATAL_WARNINGS
+AG_GST_ARG_ENABLE_EXTRA_CHECKS
 
 dnl subsystems - can influence other decisions so needs to be high up
 dnl we need to AM_CONDITIONAL them here for automake 1.6.x compatibility
@@ -604,6 +605,9 @@ AC_CHECK_FUNCS([strcasestr])
 AC_CHECK_FUNCS([gmtime_r])
 AC_CHECK_FUNCS([localtime_r])
 AC_CHECK_FUNCS([sigaction])
+AC_CHECK_FUNCS([getrusage])
+AM_CONDITIONAL(HAVE_GETRUSAGE, test "x$ac_cv_func_getrusage" = "xyes")
+AC_CHECK_HEADERS([sys/resource.h])
 
 dnl check for fseeko()
 AC_FUNC_FSEEKO
@@ -768,12 +772,22 @@ fi
 dnl *** checks for dependency libraries ***
 
 dnl GLib
-GLIB_REQ=2.32.0
+GLIB_REQ=2.40.0
 AG_GST_GLIB_CHECK([$GLIB_REQ])
 
 dnl Check for documentation xrefs
 GLIB_PREFIX="`$PKG_CONFIG --variable=prefix glib-2.0`"
 AC_SUBST(GLIB_PREFIX)
+
+dnl GTK is optional and only used in examples
+HAVE_GTK=no
+GTK_REQ=3.10
+if test "x$BUILD_EXAMPLES" = "xyes"; then
+  PKG_CHECK_MODULES(GTK, gtk+-3.0 >= $GTK_REQ, HAVE_GTK=yes, HAVE_GTK=no)
+  AC_SUBST(GTK_LIBS)
+  AC_SUBST(GTK_CFLAGS)
+fi
+AM_CONDITIONAL(HAVE_GTK, test "x$HAVE_GTK" = "xyes")
 
 dnl building of unit test libraries
 AC_ARG_ENABLE(check,
@@ -980,6 +994,7 @@ libs/gst/helpers/Makefile
 libs/gst/net/Makefile
 plugins/Makefile
 plugins/elements/Makefile
+plugins/tracers/Makefile
 po/Makefile.in
 tests/Makefile
 tests/benchmarks/Makefile

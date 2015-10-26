@@ -578,6 +578,24 @@ GST_START_TEST (test_url_joining)
   gst_uri_unref (joined);
   gst_uri_unref (rel);
 
+  /* test path ending in '../' */
+  rel = gst_uri_from_string ("one/two/../");
+  joined = gst_uri_join (base, rel);
+  l = gst_uri_to_string (joined);
+  fail_unless_equals_string (l, "http://example.com/path/to/dir/one/");
+  g_free (l);
+  gst_uri_unref (joined);
+  gst_uri_unref (rel);
+
+  /* test path ending in '..' Result should be the same as when ending in '../' */
+  rel = gst_uri_from_string ("one/two/..");
+  joined = gst_uri_join (base, rel);
+  l = gst_uri_to_string (joined);
+  fail_unless_equals_string (l, "http://example.com/path/to/dir/one/");
+  g_free (l);
+  gst_uri_unref (joined);
+  gst_uri_unref (rel);
+
   /* test replace with absolute */
   rel = gst_uri_from_string ("https://ssl.example.com/new_filename.xml");
   joined = gst_uri_join (base, rel);
@@ -779,6 +797,20 @@ GST_START_TEST (test_url_constructors)
   tmp_str = gst_uri_to_string (url2);
   fail_unless_equals_string (tmp_str,
       "scheme://userinfo@hostname:1234/a/new/path/to/file");
+  g_free (tmp_str);
+  gst_uri_unref (url2);
+
+  url2 = gst_uri_from_string_with_base (url1, "http://foobar.com/bla");
+  fail_unless_equals_string (gst_uri_get_scheme (url2), "http");
+  fail_unless_equals_string (gst_uri_get_host (url2), "foobar.com");
+  fail_unless (gst_uri_get_port (url2) == 0);
+  tmp_str = gst_uri_get_path (url2);
+  fail_unless_equals_string (tmp_str, "/bla");
+  g_free (tmp_str);
+  fail_unless (gst_uri_get_query_table (url2) == NULL);
+  fail_unless (gst_uri_get_fragment (url2) == NULL);
+  tmp_str = gst_uri_to_string (url2);
+  fail_unless_equals_string (tmp_str, "http://foobar.com/bla");
   g_free (tmp_str);
   gst_uri_unref (url2);
 

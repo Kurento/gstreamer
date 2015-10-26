@@ -172,16 +172,17 @@ typedef enum { /*< flags >*/
 /**
  * GstSegment:
  * @flags: flags for this segment
- * @rate: the rate of the segment
+ * @rate: the playback rate of the segment
  * @applied_rate: the already applied rate to the segment
  * @format: the format of the segment values
- * @base: the base of the segment
- * @offset: the offset to apply to @start or @stop
- * @start: the start of the segment
- * @stop: the stop of the segment
- * @time: the stream time of the segment
- * @position: the position in the segment (used internally by elements
- *     such as sources, demuxers or parsers to track progress)
+ * @base: the running time (plus elapsed time, see offset) of the segment start
+ * @offset: the amount (in buffer timestamps) that has already been elapsed in
+ *     the segment
+ * @start: the start of the segment in buffer timestamp time (PTS)
+ * @stop: the stop of the segment in buffer timestamp time (PTS)
+ * @time: the stream time of the segment start
+ * @position: the buffer timestamp position in the segment (used internally by
+ *     elements such as sources, demuxers or parsers to track progress)
  * @duration: the duration of the segment
  *
  * A helper structure that holds the configured region of
@@ -217,12 +218,19 @@ void         gst_segment_free                (GstSegment *segment);
 
 void         gst_segment_init                (GstSegment *segment, GstFormat format);
 
+gint         gst_segment_to_stream_time_full (const GstSegment *segment, GstFormat format, guint64 position, guint64 * stream_time);
 guint64      gst_segment_to_stream_time      (const GstSegment *segment, GstFormat format, guint64 position);
+gint         gst_segment_position_from_stream_time_full (const GstSegment * segment, GstFormat format, guint64 stream_time, guint64 * position);
+guint64      gst_segment_position_from_stream_time (const GstSegment * segment, GstFormat format, guint64 stream_time);
 guint64      gst_segment_to_running_time     (const GstSegment *segment, GstFormat format, guint64 position);
 
 gint         gst_segment_to_running_time_full (const GstSegment *segment, GstFormat format, guint64 position,
                                                guint64 * running_time);
+#ifndef GST_DISABLE_DEPRECATED
 guint64      gst_segment_to_position         (const GstSegment *segment, GstFormat format, guint64 running_time);
+#endif
+gint         gst_segment_position_from_running_time_full (const GstSegment *segment, GstFormat format, guint64 running_time, guint64 * position);
+guint64      gst_segment_position_from_running_time (const GstSegment *segment, GstFormat format, guint64 running_time);
 
 gboolean     gst_segment_set_running_time    (GstSegment *segment, GstFormat format, guint64 running_time);
 

@@ -702,8 +702,6 @@ GST_DISABLE_REGISTRY
 GST_DISABLE_PLUGIN
 <SUBSECTION Private>
 GST_HAVE_GLIB_2_8
-GST_PTR_FORMAT
-GST_SEGMENT_FORMAT
 GST_EXPORT
 GST_PLUGIN_EXPORT
 GST_PADDING
@@ -869,6 +867,9 @@ gst_element_get_start_time
 gst_element_set_bus
 gst_element_get_bus
 gst_element_set_context
+gst_element_get_context
+gst_element_get_context_unlocked
+gst_element_get_contexts
 gst_element_get_factory
 gst_element_set_name
 gst_element_get_name
@@ -1351,6 +1352,8 @@ GST_TIME_FORMAT
 GST_TIME_ARGS
 GST_STIME_FORMAT
 GST_STIME_ARGS
+GST_PTR_FORMAT
+GST_SEGMENT_FORMAT
 gst_debug_bin_to_dot_data
 gst_debug_bin_to_dot_file
 gst_debug_bin_to_dot_file_with_ts
@@ -2565,9 +2568,14 @@ gst_segment_new
 gst_segment_copy
 gst_segment_free
 gst_segment_do_seek
+gst_segment_position_from_stream_time
+gst_segment_position_from_stream_time_full
 gst_segment_to_running_time
 gst_segment_to_running_time_full
 gst_segment_to_stream_time
+gst_segment_to_stream_time_full
+gst_segment_position_from_running_time
+gst_segment_position_from_running_time_full
 gst_segment_to_position
 gst_segment_set_running_time
 gst_segment_copy_into

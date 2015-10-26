@@ -94,6 +94,7 @@
 #include "gstutils.h"
 #include "gstinfo.h"
 #include "gsterror.h"
+#include "gsttracerutils.h"
 #include "gstvalue.h"
 #include "glib-compat-private.h"
 
@@ -1986,6 +1987,8 @@ gst_pad_unlink (GstPad * srcpad, GstPad * sinkpad)
   g_return_val_if_fail (GST_IS_PAD (sinkpad), FALSE);
   g_return_val_if_fail (GST_PAD_IS_SINK (sinkpad), FALSE);
 
+  GST_TRACER_PAD_UNLINK_PRE (srcpad, sinkpad);
+
   GST_CAT_INFO (GST_CAT_ELEMENT_PADS, "unlinking %s:%s(%p) and %s:%s(%p)",
       GST_DEBUG_PAD_NAME (srcpad), srcpad,
       GST_DEBUG_PAD_NAME (sinkpad), sinkpad);
@@ -2053,6 +2056,7 @@ done:
             GST_STRUCTURE_CHANGE_TYPE_PAD_UNLINK, parent, FALSE));
     gst_object_unref (parent);
   }
+  GST_TRACER_PAD_UNLINK_POST (srcpad, sinkpad, result);
   return result;
 
   /* ERRORS */
@@ -2494,7 +2498,13 @@ link_failed:
 GstPadLinkReturn
 gst_pad_link (GstPad * srcpad, GstPad * sinkpad)
 {
-  return gst_pad_link_full (srcpad, sinkpad, GST_PAD_LINK_CHECK_DEFAULT);
+  GstPadLinkReturn ret;
+
+  GST_TRACER_PAD_LINK_PRE (srcpad, sinkpad);
+  ret = gst_pad_link_full (srcpad, sinkpad, GST_PAD_LINK_CHECK_DEFAULT);
+  GST_TRACER_PAD_LINK_POST (srcpad, sinkpad, ret);
+
+  return ret;
 }
 
 static void
@@ -2973,9 +2983,8 @@ gst_pad_query_accept_caps_default (GstPad * pad, GstQuery * query)
   /* first forward the query to internally linked pads when we are dealing with
    * a PROXY CAPS */
   if (GST_PAD_IS_PROXY_CAPS (pad)) {
-    if ((result = gst_pad_proxy_query_accept_caps (pad, query))) {
-      goto done;
-    }
+    result = gst_pad_proxy_query_accept_caps (pad, query);
+    goto done;
   }
 
   GST_CAT_DEBUG_OBJECT (GST_CAT_PERFORMANCE, pad,
@@ -3812,6 +3821,7 @@ gst_pad_query (GstPad * pad, GstQuery * query)
 
   GST_DEBUG_OBJECT (pad, "doing query %p (%s)", query,
       GST_QUERY_TYPE_NAME (query));
+  GST_TRACER_PAD_QUERY_PRE (pad, query);
 
   serialized = GST_QUERY_IS_SERIALIZED (query);
   if (G_UNLIKELY (serialized))
@@ -3834,6 +3844,7 @@ gst_pad_query (GstPad * pad, GstQuery * query)
 
   GST_DEBUG_OBJECT (pad, "sent query %p (%s), result %d", query,
       GST_QUERY_TYPE_NAME (query), res);
+  GST_TRACER_PAD_QUERY_POST (pad, res, query);
 
   if (res != TRUE)
     goto query_failed;
@@ -4043,7 +4054,7 @@ gst_pad_chain_data_unchecked (GstPad * pad, GstPadProbeType type, void *data)
   if (G_UNLIKELY (GST_PAD_MODE (pad) != GST_PAD_MODE_PUSH))
     goto wrong_mode;
 
-#ifndef G_DISABLE_ASSERT
+#ifdef GST_ENABLE_EXTRA_CHECKS
   if (G_UNLIKELY (pad->priv->last_cookie != pad->priv->events_cookie)) {
     if (!find_event_by_type (pad, GST_EVENT_STREAM_START, 0)) {
       g_warning (G_STRLOC
@@ -4296,7 +4307,7 @@ gst_pad_push_data (GstPad * pad, GstPadProbeType type, void *data)
   if (G_UNLIKELY (GST_PAD_MODE (pad) != GST_PAD_MODE_PUSH))
     goto wrong_mode;
 
-#ifndef G_DISABLE_ASSERT
+#ifdef GST_ENABLE_EXTRA_CHECKS
   if (G_UNLIKELY (pad->priv->last_cookie != pad->priv->events_cookie)) {
     if (!find_event_by_type (pad, GST_EVENT_STREAM_START, 0)) {
       g_warning (G_STRLOC
@@ -4446,12 +4457,17 @@ not_linked:
 GstFlowReturn
 gst_pad_push (GstPad * pad, GstBuffer * buffer)
 {
+  GstFlowReturn res;
+
   g_return_val_if_fail (GST_IS_PAD (pad), GST_FLOW_ERROR);
   g_return_val_if_fail (GST_PAD_IS_SRC (pad), GST_FLOW_ERROR);
   g_return_val_if_fail (GST_IS_BUFFER (buffer), GST_FLOW_ERROR);
 
-  return gst_pad_push_data (pad,
+  GST_TRACER_PAD_PUSH_PRE (pad, buffer);
+  res = gst_pad_push_data (pad,
       GST_PAD_PROBE_TYPE_BUFFER | GST_PAD_PROBE_TYPE_PUSH, buffer);
+  GST_TRACER_PAD_PUSH_POST (pad, res);
+  return res;
 }
 
 /**
@@ -4481,12 +4497,17 @@ gst_pad_push (GstPad * pad, GstBuffer * buffer)
 GstFlowReturn
 gst_pad_push_list (GstPad * pad, GstBufferList * list)
 {
+  GstFlowReturn res;
+
   g_return_val_if_fail (GST_IS_PAD (pad), GST_FLOW_ERROR);
   g_return_val_if_fail (GST_PAD_IS_SRC (pad), GST_FLOW_ERROR);
   g_return_val_if_fail (GST_IS_BUFFER_LIST (list), GST_FLOW_ERROR);
 
-  return gst_pad_push_data (pad,
+  GST_TRACER_PAD_PUSH_LIST_PRE (pad, list);
+  res = gst_pad_push_data (pad,
       GST_PAD_PROBE_TYPE_BUFFER_LIST | GST_PAD_PROBE_TYPE_PUSH, list);
+  GST_TRACER_PAD_PUSH_LIST_POST (pad, res);
+  return res;
 }
 
 static GstFlowReturn
@@ -4750,6 +4771,8 @@ gst_pad_pull_range (GstPad * pad, guint64 offset, guint size,
   g_return_val_if_fail (*buffer == NULL || (GST_IS_BUFFER (*buffer)
           && gst_buffer_get_size (*buffer) >= size), GST_FLOW_ERROR);
 
+  GST_TRACER_PAD_PULL_RANGE_PRE (pad, offset, size);
+
   GST_OBJECT_LOCK (pad);
   if (G_UNLIKELY (GST_PAD_IS_FLUSHING (pad)))
     goto flushing;
@@ -4796,6 +4819,7 @@ probed_data:
 
   *buffer = res_buf;
 
+  GST_TRACER_PAD_PULL_RANGE_POST (pad, *buffer, ret);
   return ret;
 
   /* ERROR recovery here */
@@ -4805,7 +4829,8 @@ flushing:
         "pullrange, but pad was flushing");
     pad->ABI.abi.last_flowret = GST_FLOW_FLUSHING;
     GST_OBJECT_UNLOCK (pad);
-    return GST_FLOW_FLUSHING;
+    ret = GST_FLOW_FLUSHING;
+    goto done;
   }
 wrong_mode:
   {
@@ -4813,7 +4838,8 @@ wrong_mode:
         GST_DEBUG_PAD_NAME (pad));
     pad->ABI.abi.last_flowret = GST_FLOW_ERROR;
     GST_OBJECT_UNLOCK (pad);
-    return GST_FLOW_ERROR;
+    ret = GST_FLOW_ERROR;
+    goto done;
   }
 probe_stopped:
   {
@@ -4834,7 +4860,7 @@ probe_stopped:
     }
     pad->ABI.abi.last_flowret = ret;
     GST_OBJECT_UNLOCK (pad);
-    return ret;
+    goto done;
   }
 not_linked:
   {
@@ -4842,7 +4868,8 @@ not_linked:
         "pulling range, but it was not linked");
     pad->ABI.abi.last_flowret = GST_FLOW_NOT_LINKED;
     GST_OBJECT_UNLOCK (pad);
-    return GST_FLOW_NOT_LINKED;
+    ret = GST_FLOW_NOT_LINKED;
+    goto done;
   }
 pull_range_failed:
   {
@@ -4851,7 +4878,7 @@ pull_range_failed:
     GST_CAT_LEVEL_LOG (GST_CAT_SCHEDULING,
         (ret >= GST_FLOW_EOS) ? GST_LEVEL_INFO : GST_LEVEL_WARNING,
         pad, "pullrange failed, flow: %s", gst_flow_get_name (ret));
-    return ret;
+    goto done;
   }
 probe_stopped_unref:
   {
@@ -4867,8 +4894,11 @@ probe_stopped_unref:
 
     if (*buffer == NULL)
       gst_buffer_unref (res_buf);
-    return ret;
+    goto done;
   }
+done:
+  GST_TRACER_PAD_PULL_RANGE_POST (pad, NULL, ret);
+  return ret;
 }
 
 /* must be called with pad object lock */
@@ -5217,6 +5247,8 @@ gst_pad_push_event (GstPad * pad, GstEvent * event)
   g_return_val_if_fail (GST_IS_PAD (pad), FALSE);
   g_return_val_if_fail (GST_IS_EVENT (event), FALSE);
 
+  GST_TRACER_PAD_PUSH_EVENT_PRE (pad, event);
+
   if (GST_PAD_IS_SRC (pad)) {
     if (G_UNLIKELY (!GST_EVENT_IS_DOWNSTREAM (event)))
       goto wrong_direction;
@@ -5271,6 +5303,7 @@ gst_pad_push_event (GstPad * pad, GstEvent * event)
   }
   GST_OBJECT_UNLOCK (pad);
 
+  GST_TRACER_PAD_PUSH_EVENT_POST (pad, res);
   return res;
 
   /* ERROR handling */
@@ -5279,28 +5312,31 @@ wrong_direction:
     g_warning ("pad %s:%s pushing %s event in wrong direction",
         GST_DEBUG_PAD_NAME (pad), GST_EVENT_TYPE_NAME (event));
     gst_event_unref (event);
-    return FALSE;
+    goto done;
   }
 unknown_direction:
   {
     g_warning ("pad %s:%s has invalid direction", GST_DEBUG_PAD_NAME (pad));
     gst_event_unref (event);
-    return FALSE;
+    goto done;
   }
 flushed:
   {
     GST_DEBUG_OBJECT (pad, "We're flushing");
     GST_OBJECT_UNLOCK (pad);
     gst_event_unref (event);
-    return FALSE;
+    goto done;
   }
 eos:
   {
     GST_DEBUG_OBJECT (pad, "We're EOS");
     GST_OBJECT_UNLOCK (pad);
     gst_event_unref (event);
-    return FALSE;
+    goto done;
   }
+done:
+  GST_TRACER_PAD_PUSH_EVENT_POST (pad, FALSE);
+  return FALSE;
 }
 
 /* Check if we can call the event function with the given event */
@@ -6033,7 +6069,7 @@ gst_pad_probe_info_get_buffer (GstPadProbeInfo * info)
 }
 
 /**
- * gst_pad_probe_info_get_bufferlist:
+ * gst_pad_probe_info_get_buffer_list:
  * @info: a #GstPadProbeInfo
  *
  * Returns: (transfer none): The #GstBufferlist from the probe

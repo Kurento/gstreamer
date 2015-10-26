@@ -536,7 +536,7 @@ gst_base_transform_transform_caps (GstBaseTransform * trans,
     ret = klass->transform_caps (trans, direction, caps, filter);
     GST_LOG_OBJECT (trans, "  to: %" GST_PTR_FORMAT, ret);
 
-#ifndef G_DISABLE_ASSERT
+#ifdef GST_ENABLE_EXTRA_CHECKS
     if (filter) {
       if (!gst_caps_is_subset (ret, filter)) {
         GstCaps *intersection;
@@ -2028,13 +2028,14 @@ default_submit_input_buffer (GstBaseTransform * trans, gboolean is_discont,
 
   if (GST_BUFFER_OFFSET_IS_VALID (inbuf))
     GST_DEBUG_OBJECT (trans,
-        "handling buffer %p of size %" G_GSIZE_FORMAT " and offset %"
-        G_GUINT64_FORMAT, inbuf, gst_buffer_get_size (inbuf),
-        GST_BUFFER_OFFSET (inbuf));
+        "handling buffer %p of size %" G_GSIZE_FORMAT ", PTS %" GST_TIME_FORMAT
+        " and offset %" G_GUINT64_FORMAT, inbuf, gst_buffer_get_size (inbuf),
+        GST_TIME_ARGS (GST_BUFFER_PTS (inbuf)), GST_BUFFER_OFFSET (inbuf));
   else
     GST_DEBUG_OBJECT (trans,
-        "handling buffer %p of size %" G_GSIZE_FORMAT " and offset NONE", inbuf,
-        gst_buffer_get_size (inbuf));
+        "handling buffer %p of size %" G_GSIZE_FORMAT ", PTS %" GST_TIME_FORMAT
+        " and offset NONE", inbuf, gst_buffer_get_size (inbuf),
+        GST_TIME_ARGS (GST_BUFFER_PTS (inbuf)));
 
   /* Don't allow buffer handling before negotiation, except in passthrough mode
    * or if the class doesn't implement a set_caps function (in which case it doesn't

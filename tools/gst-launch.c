@@ -325,7 +325,7 @@ print_error_message (GstMessage * msg)
   if (debug != NULL)
     g_printerr (_("Additional debug info:\n%s\n"), debug);
 
-  g_error_free (err);
+  g_clear_error (&err);
   g_free (debug);
   g_free (name);
 }
@@ -371,6 +371,7 @@ print_tag (const GstTagList * list, const gchar * tag, gpointer unused)
         g_warning ("Couldn't fetch sample for %s tag", tag);
         g_assert_not_reached ();
       }
+      gst_sample_unref (sample);
     } else if (gst_tag_get_type (tag) == GST_TYPE_DATE_TIME) {
       GstDateTime *dt = NULL;
 
@@ -649,7 +650,7 @@ event_loop (GstElement * pipeline, gboolean blocking, gboolean do_progress,
         if (debug) {
           PRINT (_("INFO:\n%s\n"), debug);
         }
-        g_error_free (gerror);
+        g_clear_error (&gerror);
         g_free (debug);
         g_free (name);
         break;
@@ -668,7 +669,7 @@ event_loop (GstElement * pipeline, gboolean blocking, gboolean do_progress,
         if (debug) {
           PRINT (_("Additional debug info:\n%s\n"), debug);
         }
-        g_error_free (gerror);
+        g_clear_error (&gerror);
         g_free (debug);
         g_free (name);
         break;
@@ -973,6 +974,8 @@ main (int argc, char *argv[])
       g_printerr ("Error initializing: %s\n", GST_STR_NULL (err->message));
     else
       g_printerr ("Error initializing: Unknown error!\n");
+    g_clear_error (&error);
+    g_option_context_free (ctx);
     exit (1);
   }
   g_option_context_free (ctx);
@@ -1000,7 +1003,7 @@ main (int argc, char *argv[])
     if (error) {
       g_printerr (_("ERROR: pipeline could not be constructed: %s.\n"),
           GST_STR_NULL (error->message));
-      g_error_free (error);
+      g_clear_error (&error);
     } else {
       g_printerr (_("ERROR: pipeline could not be constructed.\n"));
     }
@@ -1008,7 +1011,7 @@ main (int argc, char *argv[])
   } else if (error) {
     g_printerr (_("WARNING: erroneous pipeline: %s\n"),
         GST_STR_NULL (error->message));
-    g_error_free (error);
+    g_clear_error (&error);
     return 1;
   }
 

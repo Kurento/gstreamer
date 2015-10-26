@@ -511,6 +511,9 @@ EXPORTS
 	gst_element_get_clock
 	gst_element_get_compatible_pad
 	gst_element_get_compatible_pad_template
+	gst_element_get_context
+	gst_element_get_context_unlocked
+	gst_element_get_contexts
 	gst_element_get_factory
 	gst_element_get_request_pad
 	gst_element_get_start_time
@@ -1154,11 +1157,16 @@ EXPORTS
 	gst_segment_is_equal
 	gst_segment_new
 	gst_segment_offset_running_time
+	gst_segment_position_from_running_time
+	gst_segment_position_from_running_time_full
+	gst_segment_position_from_stream_time
+	gst_segment_position_from_stream_time_full
 	gst_segment_set_running_time
 	gst_segment_to_position
 	gst_segment_to_running_time
 	gst_segment_to_running_time_full
 	gst_segment_to_stream_time
+	gst_segment_to_stream_time_full
 	gst_segtrap_is_enabled
 	gst_segtrap_set_enabled
 	gst_state_change_get_type
@@ -1383,6 +1391,13 @@ EXPORTS
 	gst_toc_setter_get_type
 	gst_toc_setter_reset
 	gst_toc_setter_set_toc
+	gst_tracer_factory_get_list
+	gst_tracer_factory_get_type
+	gst_tracer_get_type
+	gst_tracer_log_trace
+	gst_tracer_register
+	gst_tracing_register_hook
+	gst_tracing_register_hook_id
 	gst_type_find_factory_call_function
 	gst_type_find_factory_get_caps
 	gst_type_find_factory_get_extensions

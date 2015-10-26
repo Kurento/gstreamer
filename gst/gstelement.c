@@ -90,6 +90,7 @@
 #include "gstutils.h"
 #include "gstinfo.h"
 #include "gstquark.h"
+#include "gsttracerutils.h"
 #include "gstvalue.h"
 #include "gst-i18n-lib.h"
 #include "glib-compat-private.h"
@@ -133,6 +134,8 @@ static gboolean gst_element_set_clock_func (GstElement * element,
 static void gst_element_set_bus_func (GstElement * element, GstBus * bus);
 static gboolean gst_element_post_message_default (GstElement * element,
     GstMessage * message);
+static void gst_element_set_context_default (GstElement * element,
+    GstContext * context);
 
 static gboolean gst_element_default_send_event (GstElement * element,
     GstEvent * event);
@@ -239,6 +242,7 @@ gst_element_class_init (GstElementClass * klass)
   klass->send_event = GST_DEBUG_FUNCPTR (gst_element_default_send_event);
   klass->numpadtemplates = 0;
   klass->post_message = GST_DEBUG_FUNCPTR (gst_element_post_message_default);
+  klass->set_context = GST_DEBUG_FUNCPTR (gst_element_set_context_default);
 
   klass->elementfactory = NULL;
 }
@@ -692,7 +696,7 @@ gst_element_add_pad (GstElement * element, GstPad * pad)
 
   /* emit the PAD_ADDED signal */
   g_signal_emit (element, gst_element_signals[PAD_ADDED], 0, pad);
-
+  GST_TRACER_ELEMENT_ADD_PAD (element, pad);
   return TRUE;
 
   /* ERROR cases */
@@ -804,7 +808,7 @@ gst_element_remove_pad (GstElement * element, GstPad * pad)
 
   /* emit the PAD_REMOVED signal before unparenting and losing the last ref. */
   g_signal_emit (element, gst_element_signals[PAD_REMOVED], 0, pad);
-
+  GST_TRACER_ELEMENT_REMOVE_PAD (element, pad);
   gst_object_unparent (GST_OBJECT_CAST (pad));
 
   return TRUE;
@@ -1653,18 +1657,22 @@ gboolean
 gst_element_query (GstElement * element, GstQuery * query)
 {
   GstElementClass *klass;
+  gboolean res = FALSE;
 
   g_return_val_if_fail (GST_IS_ELEMENT (element), FALSE);
   g_return_val_if_fail (query != NULL, FALSE);
+
+  GST_TRACER_ELEMENT_QUERY_PRE (element, query);
 
   klass = GST_ELEMENT_GET_CLASS (element);
   if (klass->query) {
     GST_CAT_DEBUG (GST_CAT_ELEMENT_PADS, "send query on element %s",
         GST_ELEMENT_NAME (element));
-    return klass->query (element, query);
+    res = klass->query (element, query);
   }
 
-  return FALSE;
+  GST_TRACER_ELEMENT_QUERY_POST (element, res);
+  return res;
 }
 
 static gboolean
@@ -1721,15 +1729,19 @@ gboolean
 gst_element_post_message (GstElement * element, GstMessage * message)
 {
   GstElementClass *klass;
+  gboolean res = FALSE;
 
   g_return_val_if_fail (GST_IS_ELEMENT (element), FALSE);
   g_return_val_if_fail (message != NULL, FALSE);
 
+  GST_TRACER_ELEMENT_POST_MESSAGE_PRE (element, message);
+
   klass = GST_ELEMENT_GET_CLASS (element);
   if (klass->post_message)
-    return klass->post_message (element, message);
+    res = klass->post_message (element, message);
 
-  return FALSE;
+  GST_TRACER_ELEMENT_POST_MESSAGE_POST (element, res);
+  return res;
 }
 
 /**
@@ -2679,15 +2691,20 @@ invalid_return:
 }
 
 /* gst_iterator_fold functions for pads_activate
- * Stop the iterator if activating one pad failed. */
+ * Stop the iterator if activating one pad failed, but only if that pad
+ * has not been removed from the element. */
 static gboolean
 activate_pads (const GValue * vpad, GValue * ret, gboolean * active)
 {
   GstPad *pad = g_value_get_object (vpad);
   gboolean cont = TRUE;
 
-  if (!(cont = gst_pad_set_active (pad, *active)))
-    g_value_set_boolean (ret, FALSE);
+  if (!gst_pad_set_active (pad, *active)) {
+    if (GST_PAD_PARENT (pad) != NULL) {
+      cont = FALSE;
+      g_value_set_boolean (ret, FALSE);
+    }
+  }
 
   return cont;
 }
@@ -2811,13 +2828,34 @@ gst_element_change_state_func (GstElement * element, GstStateChange transition)
     case GST_STATE_CHANGE_PLAYING_TO_PAUSED:
       break;
     case GST_STATE_CHANGE_PAUSED_TO_READY:
-    case GST_STATE_CHANGE_READY_TO_NULL:
+    case GST_STATE_CHANGE_READY_TO_NULL:{
+      GList *l;
+
       /* deactivate pads in both cases, since they are activated on
          ready->paused but the element might not have made it to paused */
       if (!gst_element_pads_activate (element, FALSE)) {
         result = GST_STATE_CHANGE_FAILURE;
       }
+
+      /* Remove all non-persistent contexts */
+      GST_OBJECT_LOCK (element);
+      for (l = element->contexts; l;) {
+        GstContext *context = l->data;
+
+        if (!gst_context_is_persistent (context)) {
+          GList *next;
+
+          gst_context_unref (context);
+          next = l->next;
+          element->contexts = g_list_delete_link (element->contexts, l);
+          l = next;
+        } else {
+          l = l->next;
+        }
+      }
+      GST_OBJECT_UNLOCK (element);
       break;
+    }
     default:
       /* this will catch real but unhandled state changes;
        * can only be caused by:
@@ -2914,6 +2952,7 @@ gst_element_dispose (GObject * object)
   bus_p = &element->bus;
   gst_object_replace ((GstObject **) clock_p, NULL);
   gst_object_replace ((GstObject **) bus_p, NULL);
+  g_list_free_full (element->contexts, (GDestroyNotify) gst_context_unref);
   GST_OBJECT_UNLOCK (element);
 
   GST_CAT_INFO_OBJECT (GST_CAT_REFCOUNTING, element, "parent class dispose");
@@ -3024,6 +3063,35 @@ gst_element_get_bus (GstElement * element)
   return result;
 }
 
+static void
+gst_element_set_context_default (GstElement * element, GstContext * context)
+{
+  const gchar *context_type;
+  GList *l;
+
+  GST_OBJECT_LOCK (element);
+  context_type = gst_context_get_context_type (context);
+  for (l = element->contexts; l; l = l->next) {
+    GstContext *tmp = l->data;
+    const gchar *tmp_type = gst_context_get_context_type (tmp);
+
+    /* Always store newest context but never replace
+     * a persistent one by a non-persistent one */
+    if (strcmp (context_type, tmp_type) == 0 &&
+        (gst_context_is_persistent (context) ||
+            !gst_context_is_persistent (tmp))) {
+      gst_context_replace ((GstContext **) & l->data, context);
+      break;
+    }
+  }
+  /* Not found? Add */
+  if (l == NULL) {
+    element->contexts =
+        g_list_prepend (element->contexts, gst_context_ref (context));
+  }
+  GST_OBJECT_UNLOCK (element);
+}
+
 /**
  * gst_element_set_context:
  * @element: a #GstElement to set the context of.
@@ -3048,4 +3116,96 @@ gst_element_set_context (GstElement * element, GstContext * context)
 
   if (oclass->set_context)
     oclass->set_context (element, context);
+}
+
+/**
+ * gst_element_get_contexts:
+ * @element: a #GstElement to set the context of.
+ *
+ * Gets the contexts set on the element.
+ *
+ * MT safe.
+ *
+ * Returns: (element-type Gst.Context) (transfer full): List of #GstContext
+ *
+ * Since: 1.8
+ */
+GList *
+gst_element_get_contexts (GstElement * element)
+{
+  GList *ret;
+
+  g_return_val_if_fail (GST_IS_ELEMENT (element), NULL);
+
+  GST_OBJECT_LOCK (element);
+  ret = g_list_copy_deep (element->contexts, (GCopyFunc) gst_context_ref, NULL);
+  GST_OBJECT_UNLOCK (element);
+
+  return ret;
+}
+
+static gint
+_match_context_type (GstContext * c1, const gchar * context_type)
+{
+  const gchar *c1_type;
+
+  c1_type = gst_context_get_context_type (c1);
+
+  return g_strcmp0 (c1_type, context_type);
+}
+
+/**
+ * gst_element_get_context_unlocked:
+ * @element: a #GstElement to get the context of.
+ * @context_type: a name of a context to retrieve
+ *
+ * Gets the context with @context_type set on the element or NULL.
+ *
+ * Returns: (transfer full): A #GstContext or NULL
+ *
+ * Since: 1.8
+ */
+GstContext *
+gst_element_get_context_unlocked (GstElement * element,
+    const gchar * context_type)
+{
+  GstContext *ret = NULL;
+  GList *node;
+
+  g_return_val_if_fail (GST_IS_ELEMENT (element), NULL);
+
+  node =
+      g_list_find_custom (element->contexts, context_type,
+      (GCompareFunc) _match_context_type);
+  if (node && node->data)
+    ret = gst_context_ref (node->data);
+
+  return ret;
+}
+
+/**
+ * gst_element_get_context:
+ * @element: a #GstElement to get the context of.
+ * @context_type: a name of a context to retrieve
+ *
+ * Gets the context with @context_type set on the element or NULL.
+ *
+ * MT safe.
+ *
+ * Returns: (transfer full): A #GstContext or NULL
+ *
+ * Since: 1.8
+ */
+GstContext *
+gst_element_get_context (GstElement * element, const gchar * context_type)
+{
+  GstContext *ret = NULL;
+
+  g_return_val_if_fail (GST_IS_ELEMENT (element), NULL);
+
+  GST_OBJECT_LOCK (element);
+  ret = gst_element_get_context_unlocked (element, context_type);
+  GST_OBJECT_UNLOCK (element);
+
+  return ret;
 }
