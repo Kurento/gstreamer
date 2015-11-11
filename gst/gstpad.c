@@ -1324,6 +1324,13 @@ cleanup_hook (GstPad * pad, GHook * hook)
  * Be notified of different states of pads. The provided callback is called for
  * every state that matches @mask.
  *
+ * Probes are called in groups: First GST_PAD_PROBE_TYPE_BLOCK probes are
+ * called, then others, then finally GST_PAD_PROBE_TYPE_IDLE. The only
+ * exception here are GST_PAD_PROBE_TYPE_IDLE probes that are called
+ * immediately if the pad is already idle while calling gst_pad_add_probe().
+ * In each of the groups, probes are called in the order in which they were
+ * added.
+ *
  * Returns: an id or 0 if no probe is pending. The id can be used to remove the
  * probe with gst_pad_remove_probe(). When using GST_PAD_PROBE_TYPE_IDLE it can
  * happen that the probe can be run immediately and if the probe returns
@@ -1365,7 +1372,7 @@ gst_pad_add_probe (GstPad * pad, GstPadProbeType mask,
   PROBE_COOKIE (hook) = (pad->priv->probe_cookie - 1);
 
   /* add the probe */
-  g_hook_prepend (&pad->probes, hook);
+  g_hook_append (&pad->probes, hook);
   pad->num_probes++;
   /* incremenent cookie so that the new hook get's called */
   pad->priv->probe_list_cookie++;
@@ -2975,7 +2982,7 @@ static gboolean
 gst_pad_query_accept_caps_default (GstPad * pad, GstQuery * query)
 {
   /* get the caps and see if it intersects to something not empty */
-  GstCaps *caps, *allowed;
+  GstCaps *caps, *allowed = NULL;
   gboolean result;
 
   GST_DEBUG_OBJECT (pad, "query accept-caps %" GST_PTR_FORMAT, query);
@@ -2984,17 +2991,21 @@ gst_pad_query_accept_caps_default (GstPad * pad, GstQuery * query)
    * a PROXY CAPS */
   if (GST_PAD_IS_PROXY_CAPS (pad)) {
     result = gst_pad_proxy_query_accept_caps (pad, query);
-    goto done;
+    if (result)
+      allowed = gst_pad_get_pad_template_caps (pad);
+    else
+      goto done;
   }
 
-  GST_CAT_DEBUG_OBJECT (GST_CAT_PERFORMANCE, pad,
-      "fallback ACCEPT_CAPS query, consider implementing a specialized version");
-
   gst_query_parse_accept_caps (query, &caps);
-  if (GST_PAD_IS_ACCEPT_TEMPLATE (pad))
-    allowed = gst_pad_get_pad_template_caps (pad);
-  else
-    allowed = gst_pad_query_caps (pad, caps);
+  if (!allowed) {
+    GST_CAT_DEBUG_OBJECT (GST_CAT_PERFORMANCE, pad,
+        "fallback ACCEPT_CAPS query, consider implementing a specialized version");
+    if (GST_PAD_IS_ACCEPT_TEMPLATE (pad))
+      allowed = gst_pad_get_pad_template_caps (pad);
+    else
+      allowed = gst_pad_query_caps (pad, caps);
+  }
 
   if (allowed) {
     if (GST_PAD_IS_ACCEPT_INTERSECT (pad)) {
@@ -3722,11 +3733,12 @@ push_sticky (GstPad * pad, PadEvent * ev, gpointer user_data)
       break;
     case GST_FLOW_NOT_LINKED:
       /* not linked is not a problem, we are sticky so the event will be
-       * sent later but only for non-EOS events */
+       * rescheduled to be sent later on re-link, but only for non-EOS events */
       GST_DEBUG_OBJECT (pad, "pad was not linked, mark pending");
-      if (GST_EVENT_TYPE (event) != GST_EVENT_EOS)
+      if (GST_EVENT_TYPE (event) != GST_EVENT_EOS) {
         data->ret = GST_FLOW_OK;
-      GST_OBJECT_FLAG_SET (pad, GST_PAD_FLAG_PENDING_EVENTS);
+        ev->received = TRUE;
+      }
       break;
     default:
       GST_DEBUG_OBJECT (pad, "result %s, mark pending events",
@@ -5400,6 +5412,8 @@ gst_pad_send_event_unchecked (GstPad * pad, GstEvent * event,
 
       GST_PAD_SET_FLUSHING (pad);
       GST_CAT_DEBUG_OBJECT (GST_CAT_EVENT, pad, "set flush flag");
+      GST_PAD_BLOCK_BROADCAST (pad);
+      type |= GST_PAD_PROBE_TYPE_EVENT_FLUSH;
       break;
     case GST_EVENT_FLUSH_STOP:
       /* we can't accept flush-stop on inactive pads else the flushing flag

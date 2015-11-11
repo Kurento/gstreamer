@@ -94,6 +94,14 @@ typedef struct _GstBufferPool GstBufferPool;
  */
 #define GST_BUFFER_DTS(buf)                     (GST_BUFFER_CAST(buf)->dts)
 /**
+ * GST_BUFFER_DTS_OR_PTS:
+ * @buf: a #GstBuffer.:
+ *
+ * Returns the buffer decoding timestamp (dts) if valid, else the buffer
+ * presentation time (pts)
+ */
+#define GST_BUFFER_DTS_OR_PTS(buf)              (GST_BUFFER_DTS_IS_VALID(buf) ? GST_BUFFER_DTS(buf) : GST_BUFFER_PTS (buf))
+/**
  * GST_BUFFER_DURATION:
  * @buf: a #GstBuffer.
  *
@@ -337,10 +345,6 @@ void        gst_buffer_extract_dup         (GstBuffer *buffer, gsize offset,
  *
  * Returns: (transfer full): @buf
  */
-#ifdef _FOOL_GTK_DOC_
-G_INLINE_FUNC GstBuffer * gst_buffer_ref (GstBuffer * buf);
-#endif
-
 static inline GstBuffer *
 gst_buffer_ref (GstBuffer * buf)
 {
@@ -354,10 +358,6 @@ gst_buffer_ref (GstBuffer * buf)
  * Decreases the refcount of the buffer. If the refcount reaches 0, the buffer
  * with the associated metadata and memory will be freed.
  */
-#ifdef _FOOL_GTK_DOC_
-G_INLINE_FUNC void gst_buffer_unref (GstBuffer * buf);
-#endif
-
 static inline void
 gst_buffer_unref (GstBuffer * buf)
 {
@@ -377,10 +377,6 @@ gst_buffer_unref (GstBuffer * buf)
  *
  * Returns: (transfer full): a new copy of @buf.
  */
-#ifdef _FOOL_GTK_DOC_
-G_INLINE_FUNC GstBuffer * gst_buffer_copy (const GstBuffer * buf);
-#endif
-
 static inline GstBuffer *
 gst_buffer_copy (const GstBuffer * buf)
 {
@@ -454,9 +450,24 @@ gboolean        gst_buffer_copy_into            (GstBuffer *dest, GstBuffer *src
  * gst_buffer_make_writable:
  * @buf: (transfer full): a #GstBuffer
  *
- * Makes a writable buffer from the given buffer. If the source buffer is
- * already writable, this will simply return the same buffer. A copy will
- * otherwise be made using gst_buffer_copy().
+ * Returns a writable copy of @buf. If the source buffer is
+ * already writable, this will simply return the same buffer.
+ *
+ * Use this function to ensure that a buffer can be safely modified before
+ * making changes to it, including changing the metadata such as PTS/DTS.
+ *
+ * If the reference count of the source buffer @buf is exactly one, the caller
+ * is the sole owner and this function will return the buffer object unchanged.
+ *
+ * If there is more than one reference on the object, a copy will be made using
+ * gst_buffer_copy(). The passed-in @buf will be unreffed in that case, and the
+ * caller will now own a reference to the new returned buffer object. Note
+ * that this just copies the buffer structure itself, the underlying memory is
+ * not copied if it can be shared amongst multiple buffers.
+ *
+ * In short, this function unrefs the buf in the argument and refs the buffer
+ * that it returns. Don't access the argument after calling this function unless
+ * you have an additional reference to it.
  *
  * Returns: (transfer full): a writable buffer which may or may not be the
  *     same as @buf
@@ -479,10 +490,6 @@ gboolean        gst_buffer_copy_into            (GstBuffer *dest, GstBuffer *src
  *
  * Returns: %TRUE when @obuf was different from @nbuf.
  */
-#ifdef _FOOL_GTK_DOC_
-G_INLINE_FUNC gboolean gst_buffer_replace (GstBuffer **obuf, GstBuffer *nbuf);
-#endif
-
 static inline gboolean
 gst_buffer_replace (GstBuffer **obuf, GstBuffer *nbuf)
 {

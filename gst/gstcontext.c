@@ -49,6 +49,12 @@
  * known context on the element that asks for it if possible. Otherwise the
  * application should provide one if it can.
  *
+ * #GstContext<!-- -->s can be persistent.
+ * A persistent #GstContext is kept in elements when they reach
+ * %GST_STATE_NULL, non-persistent ones will be removed.
+ * Also, a non-persistent context won't override a previous persistent
+ * context set to an element.
+ *
  * Since: 1.2
  */
 
@@ -239,8 +245,8 @@ gst_context_get_structure (const GstContext * context)
  * Get a writable version of the structure.
  *
  * Returns: The structure of the context. The structure is still
- * owned by the event, which means that you should not free it and
- * that the pointer becomes invalid when you free the event.
+ * owned by the context, which means that you should not free it and
+ * that the pointer becomes invalid when you free the context.
  * This function checks if @context is writable.
  *
  * Since: 1.2
