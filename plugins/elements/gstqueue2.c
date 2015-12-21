@@ -73,6 +73,14 @@
 #include <unistd.h>
 #endif
 
+#ifdef __BIONIC__               /* Android */
+#undef lseek
+#define lseek lseek64
+#undef off_t
+#define off_t guint64
+#include <fcntl.h>
+#endif
+
 static GstStaticPadTemplate sinktemplate = GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
@@ -726,7 +734,7 @@ apply_segment (GstQueue2 * queue, GstEvent * event, GstSegment * segment,
   /* now configure the values, we use these to track timestamps on the
    * sinkpad. */
   if (segment->format != GST_FORMAT_TIME) {
-    /* non-time format, pretent the current time segment is closed with a
+    /* non-time format, pretend the current time segment is closed with a
      * 0 start and unknown stop time. */
     segment->format = GST_FORMAT_TIME;
     segment->start = 0;
@@ -875,6 +883,11 @@ get_buffering_percent (GstQueue2 * queue, gboolean * is_buffering,
     perc = 100;
     GST_LOG_OBJECT (queue, "we are EOS");
   } else {
+    GST_LOG_OBJECT (queue,
+        "Cur level bytes/time/buffers %u/%" GST_TIME_FORMAT "/%u",
+        queue->cur_level.bytes, GST_TIME_ARGS (queue->cur_level.time),
+        queue->cur_level.buffers);
+
     /* figure out the percent we are filled, we take the max of all formats. */
     if (!QUEUE_IS_USING_RING_BUFFER (queue)) {
       perc = GET_PERCENT (bytes, 0);
@@ -888,6 +901,10 @@ get_buffering_percent (GstQueue2 * queue, gboolean * is_buffering,
     /* also apply the rate estimate when we need to */
     if (queue->use_rate_estimate)
       perc = MAX (perc, GET_PERCENT (rate_time, 0));
+
+    /* Don't get to 0% unless we're really empty */
+    if (queue->cur_level.bytes > 0)
+      perc = MAX (1, perc);
   }
 #undef GET_PERCENT
 
@@ -1526,7 +1543,7 @@ gst_queue2_open_temp_location_file (GstQueue2 * queue)
 
   GST_DEBUG_OBJECT (queue, "opening temp file %s", queue->temp_template);
 
-  /* If temp_template was set, allocate a filename and open that filen */
+  /* If temp_template was set, allocate a filename and open that file */
 
   /* nothing to do */
   if (queue->temp_template == NULL)
@@ -1534,7 +1551,13 @@ gst_queue2_open_temp_location_file (GstQueue2 * queue)
 
   /* make copy of the template, we don't want to change this */
   name = g_strdup (queue->temp_template);
+
+#ifdef __BIONIC__
+  fd = g_mkstemp_full (name, O_RDWR | O_LARGEFILE, S_IRUSR | S_IWUSR);
+#else
   fd = g_mkstemp (name);
+#endif
+
   if (fd == -1)
     goto mkstemp_failed;
 
@@ -2175,10 +2198,11 @@ gst_queue2_locked_enqueue (GstQueue2 * queue, gpointer item,
   /* ERRORS */
 unexpected_event:
   {
-    g_warning
-        ("Unexpected event of kind %s can't be added in temp file of queue %s ",
-        gst_event_type_get_name (GST_EVENT_TYPE (item)),
-        GST_OBJECT_NAME (queue));
+    gboolean is_custom = GST_EVENT_TYPE (item) < GST_EVENT_CUSTOM_UPSTREAM;
+
+    GST_WARNING_OBJECT (queue, "%s%s event can't be added to temp file: "
+        "%" GST_PTR_FORMAT, is_custom ? "Unexpected " : "",
+        GST_EVENT_TYPE_NAME (item), GST_EVENT_CAST (item));
     gst_event_unref (GST_EVENT_CAST (item));
     return;
   }

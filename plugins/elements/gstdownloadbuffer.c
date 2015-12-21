@@ -30,7 +30,7 @@
  * With max-size-bytes and max-size-time you can configure the buffering limits.
  * The downloadbuffer element will try to read-ahead these amounts of data. When
  * the amount of read-ahead data drops below low-percent of the configured max,
- * the element will start emiting BUFFERING messages until high-percent of max is
+ * the element will start emitting BUFFERING messages until high-percent of max is
  * reached again.
  *
  * The downloadbuffer provides push and pull based scheduling on its source pad
@@ -70,10 +70,12 @@
 #include <io.h>                 /* lseek, open, close, read */
 #undef lseek
 #define lseek _lseeki64
-#undef off_t
-#define off_t guint64
 #else
 #include <unistd.h>
+#endif
+
+#ifdef __BIONIC__
+#include <fcntl.h>
 #endif
 
 static GstStaticPadTemplate sinktemplate = GST_STATIC_PAD_TEMPLATE ("sink",
@@ -870,7 +872,7 @@ gst_download_buffer_open_temp_location_file (GstDownloadBuffer * dlbuf)
 
   GST_DEBUG_OBJECT (dlbuf, "opening temp file %s", dlbuf->temp_template);
 
-  /* If temp_template was set, allocate a filename and open that filen */
+  /* If temp_template was set, allocate a filename and open that file */
 
   /* nothing to do */
   if (dlbuf->temp_template == NULL)
@@ -878,7 +880,11 @@ gst_download_buffer_open_temp_location_file (GstDownloadBuffer * dlbuf)
 
   /* make copy of the template, we don't want to change this */
   name = g_strdup (dlbuf->temp_template);
+#ifdef __BIONIC__
+  fd = g_mkstemp_full (name, O_RDWR | O_LARGEFILE, S_IRUSR | S_IWUSR);
+#else
   fd = g_mkstemp (name);
+#endif
   if (fd == -1)
     goto mkstemp_failed;
 

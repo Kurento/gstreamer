@@ -200,6 +200,10 @@ gboolean        gst_task_set_scheduleable(GstTask *task, gboolean scheduleable);
 void            gst_task_schedule       (GstTask *task);
 void            gst_task_unschedule     (GstTask *task);
 
+#ifdef G_DEFINE_AUTOPTR_CLEANUP_FUNC
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(GstTask, gst_object_unref)
+#endif
+
 G_END_DECLS
 
 #endif /* __GST_TASK_H__ */

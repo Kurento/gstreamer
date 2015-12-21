@@ -51,6 +51,7 @@ struct _GstMultiQueue {
   GstElement element;
 
   gboolean sync_by_running_time;
+  gboolean use_interleave;
 
   /* number of queues */
   guint	nbqueues;
@@ -67,7 +68,7 @@ struct _GstMultiQueue {
 
   guint    counter;	/* incoming object counter, use atomic accesses */
   guint32  highid;	/* contains highest id of last outputted object */
-  GstClockTime high_time; /* highest start running time */
+  GstClockTimeDiff high_time; /* highest start running time */
 
   GMutex   qlock;	/* Global queue lock (vs object lock or individual */
 			/* queues lock). Protects nbqueues, queues, global */
@@ -77,6 +78,11 @@ struct _GstMultiQueue {
 
   gboolean percent_changed;
   GMutex buffering_post_lock; /* assures only one posted at a time */
+
+  GstClockTime interleave;	/* Input interleave */
+  GstClockTimeDiff last_interleave_update;
+
+  GstClockTime unlinked_cache_time;
 };
 
 struct _GstMultiQueueClass {

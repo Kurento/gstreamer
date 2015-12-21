@@ -440,7 +440,7 @@ priv_gst_plugin_loading_get_whitelist_hash (void)
     gchar **w;
 
     for (w = _plugin_loading_whitelist; *w != NULL; ++w)
-      hash = (hash << 1) ^ g_str_hash (*w);
+      hash ^= g_str_hash (*w);
   }
 
   return hash;
@@ -1492,7 +1492,7 @@ gst_plugin_ext_dep_extract_env_vars_paths (GstPlugin * plugin,
 static guint
 gst_plugin_ext_dep_get_hash_from_stat_entry (GStatBuf * s)
 {
-  if (!(s->st_mode & (S_IFDIR | S_IFREG)))
+  if (!(s->st_mode & (S_IFDIR | S_IFREG | S_IFBLK | S_IFCHR)))
     return (guint) - 1;
 
   /* completely random formula */
@@ -1512,6 +1512,9 @@ gst_plugin_ext_dep_direntry_matches (GstPlugin * plugin, const gchar * entry,
     /* suffix match? */
     if (((flags & GST_PLUGIN_DEPENDENCY_FLAG_FILE_NAME_IS_SUFFIX)) &&
         g_str_has_suffix (entry, *filenames)) {
+      return TRUE;
+    } else if (((flags & GST_PLUGIN_DEPENDENCY_FLAG_FILE_NAME_IS_PREFIX)) &&
+        g_str_has_prefix (entry, *filenames)) {
       return TRUE;
       /* else it's an exact match that's needed */
     } else if (strcmp (entry, *filenames) == 0) {
@@ -1575,7 +1578,7 @@ gst_plugin_ext_dep_scan_dir_and_match_names (GstPlugin * plugin,
       continue;
     }
 
-    hash = (hash + fhash) << 1;
+    hash = hash + fhash;
     g_free (full_path);
   }
 
@@ -1589,7 +1592,7 @@ gst_plugin_ext_dep_scan_path_with_filenames (GstPlugin * plugin,
     GstPluginDependencyFlags flags)
 {
   const gchar *empty_filenames[] = { "", NULL };
-  gboolean recurse_into_dirs, partial_names;
+  gboolean recurse_into_dirs, partial_names = FALSE;
   guint i, hash = 0;
 
   /* to avoid special-casing below (FIXME?) */
@@ -1597,7 +1600,10 @@ gst_plugin_ext_dep_scan_path_with_filenames (GstPlugin * plugin,
     filenames = empty_filenames;
 
   recurse_into_dirs = ! !(flags & GST_PLUGIN_DEPENDENCY_FLAG_RECURSE);
-  partial_names = ! !(flags & GST_PLUGIN_DEPENDENCY_FLAG_FILE_NAME_IS_SUFFIX);
+
+  if ((flags & GST_PLUGIN_DEPENDENCY_FLAG_FILE_NAME_IS_SUFFIX) ||
+      (flags & GST_PLUGIN_DEPENDENCY_FLAG_FILE_NAME_IS_PREFIX))
+    partial_names = TRUE;
 
   /* if we can construct the exact paths to check with the data we have, just
    * stat them one by one; this is more efficient than opening the directory
@@ -1617,7 +1623,7 @@ gst_plugin_ext_dep_scan_path_with_filenames (GstPlugin * plugin,
         fhash = gst_plugin_ext_dep_get_hash_from_stat_entry (&s);
         GST_LOG_OBJECT (plugin, "stat: %s (result: %08x)", full_path, fhash);
       }
-      hash = (hash + fhash) << 1;
+      hash += fhash;
       g_free (full_path);
     }
   } else {
@@ -1661,7 +1667,6 @@ gst_plugin_ext_dep_get_stat_hash (GstPlugin * plugin, GstPluginDep * dep)
   while ((path = g_queue_pop_head (&scan_paths))) {
     scan_hash += gst_plugin_ext_dep_scan_path_with_filenames (plugin, path,
         (const gchar **) dep->names, dep->flags);
-    scan_hash = scan_hash << 1;
     g_free (path);
   }
 

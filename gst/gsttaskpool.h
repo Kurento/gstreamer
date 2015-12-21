@@ -104,6 +104,10 @@ GstTaskPool *   gst_task_pool_get_default (void);
 gboolean        gst_task_pool_need_schedule_thread (GstTaskPool *pool, gboolean needed);
 GMainContext *  gst_task_pool_get_schedule_context (GstTaskPool *pool);
 
+#ifdef G_DEFINE_AUTOPTR_CLEANUP_FUNC
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(GstTaskPool, gst_object_unref)
+#endif
+
 G_END_DECLS
 
 #endif /* __GST_TASK_POOL_H__ */

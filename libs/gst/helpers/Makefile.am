@@ -23,17 +23,8 @@ gst_ptp_helper_CFLAGS = $(GST_OBJ_CFLAGS) $(GIO_CFLAGS)
 gst_ptp_helper_LDADD = $(GST_OBJ_LIBS) $(GIO_LIBS) $(CAP_LIBS)
 endif
 
-install-exec-hook: install-helpersPROGRAMS
-if HAVE_PTP
-if HAVE_PTP_HELPER_SETUID
-	- chown root $(DESTDIR)$(helpersdir)/gst-ptp-helper
-	- chmod u+s $(DESTDIR)$(helpersdir)/gst-ptp-helper
-endif
-if HAVE_PTP_HELPER_CAPABILITIES
-	- $(SETCAP) cap_net_bind_service,cap_net_admin+ep $(DESTDIR)$(helpersdir)/gst-ptp-helper
-endif
-endif
 if ENABLE_BASH_COMPLETION
+install-exec-hook:
 	$(MKDIR_P) $(DESTDIR)$(BASH_HELPERS_DIR) && \
 	cd $(DESTDIR)$(bindir) && \
 	$(INSTALL) `echo "gst-completion-helper-" | sed '$(transform)'`@GST_API_VERSION@$(EXEEXT) \
@@ -42,6 +33,17 @@ if ENABLE_BASH_COMPLETION
 
 uninstall-hook:
 	rm -f $(DESTDIR)$(BASH_HELPERS_DIR)/gst-completion-helper-@GST_API_VERSION@$(EXEEXT)
+endif
+
+install-data-hook:
+if HAVE_PTP
+if HAVE_PTP_HELPER_SETUID
+	- chown root $(DESTDIR)$(helpersdir)/gst-ptp-helper
+	- chmod u+s $(DESTDIR)$(helpersdir)/gst-ptp-helper
+endif
+if HAVE_PTP_HELPER_CAPABILITIES
+	- $(SETCAP) cap_net_bind_service,cap_net_admin+ep $(DESTDIR)$(helpersdir)/gst-ptp-helper
+endif
 endif
 
 # clean out the old one to make sure everything is udpated correctly

@@ -64,8 +64,6 @@
 #include <io.h>                 /* lseek, open, close, read */
 #undef lseek
 #define lseek _lseeki64
-#undef off_t
-#define off_t guint64
 #endif
 
 #include <sys/stat.h>
@@ -87,6 +85,13 @@
 #include <errno.h>
 
 #include "gstfdsrc.h"
+
+#ifdef __BIONIC__               /* Android */
+#undef lseek
+#define lseek lseek64
+#undef fstat
+#define fstat fstat64
+#endif
 
 static GstStaticPadTemplate srctemplate = GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_SRC,
