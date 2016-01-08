@@ -41,12 +41,13 @@ SCANOBJ_OPTIONS=--type-init-func="gst_init(&argc,&argv)"
 
 # Header files to ignore when scanning.
 IGNORE_HFILES = \
-	check/libcheck check/internal-check.h \
+	libcheck internal-check.h \
 	gstinterpolationcontrolsourceprivate.h \
 	gstlfocontrolsourceprivate.h \
 	gstgetbits_inl.h \
 	gstindex.h \
-	dp-private.h
+	dp-private.h \
+	gstntppacket.h
 
 # Images to copy into HTML directory.
 HTML_IMAGES = gdp-header.png

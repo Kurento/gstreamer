@@ -862,11 +862,27 @@ apply_buffer_list (GstQueue2 * queue, GstBufferList * buffer_list,
   update_time_level (queue);
 }
 
+static inline gint
+get_percent (guint64 cur_level, guint64 max_level, guint64 alt_max)
+{
+  guint64 p;
+
+  if (max_level == 0)
+    return 0;
+
+  if (alt_max > 0)
+    p = gst_util_uint64_scale (cur_level, 100, MIN (max_level, alt_max));
+  else
+    p = gst_util_uint64_scale (cur_level, 100, max_level);
+
+  return MIN (p, 100);
+}
+
 static gboolean
 get_buffering_percent (GstQueue2 * queue, gboolean * is_buffering,
     gint * percent)
 {
-  gint perc;
+  gint perc, perc2;
 
   if (queue->high_percent <= 0) {
     if (percent)
@@ -875,7 +891,8 @@ get_buffering_percent (GstQueue2 * queue, gboolean * is_buffering,
       *is_buffering = FALSE;
     return FALSE;
   }
-#define GET_PERCENT(format,alt_max) ((queue->max_level.format) > 0 ? (queue->cur_level.format) * 100 / ((alt_max) > 0 ? MIN ((alt_max), (queue->max_level.format)) : (queue->max_level.format)) : 0)
+#define GET_PERCENT(format,alt_max) \
+    get_percent(queue->cur_level.format,queue->max_level.format,(alt_max))
 
   if (queue->is_eos) {
     /* on EOS we are always 100% full, we set the var here so that it we can
@@ -895,12 +912,18 @@ get_buffering_percent (GstQueue2 * queue, gboolean * is_buffering,
       guint64 rb_size = queue->ring_buffer_max_size;
       perc = GET_PERCENT (bytes, rb_size);
     }
-    perc = MAX (perc, GET_PERCENT (time, 0));
-    perc = MAX (perc, GET_PERCENT (buffers, 0));
+
+    perc2 = GET_PERCENT (time, 0);
+    perc = MAX (perc, perc2);
+
+    perc2 = GET_PERCENT (buffers, 0);
+    perc = MAX (perc, perc2);
 
     /* also apply the rate estimate when we need to */
-    if (queue->use_rate_estimate)
-      perc = MAX (perc, GET_PERCENT (rate_time, 0));
+    if (queue->use_rate_estimate) {
+      perc2 = GET_PERCENT (rate_time, 0);
+      perc = MAX (perc, perc2);
+    }
 
     /* Don't get to 0% unless we're really empty */
     if (queue->cur_level.bytes > 0)

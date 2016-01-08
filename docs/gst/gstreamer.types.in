@@ -7,6 +7,7 @@
 % - document properties and signals
 
 #include <gst/gst.h>
+#include <gst/gsttracer.h>
 
 gst_bin_get_type
 gst_buffer_pool_get_type
@@ -28,6 +29,8 @@ gst_registry_get_type
 gst_system_clock_get_type
 gst_tag_setter_get_type
 gst_task_get_type
+gst_tracer_get_type
+gst_tracer_factory_get_type
 gst_type_find_factory_get_type
 gst_uri_handler_get_type
 

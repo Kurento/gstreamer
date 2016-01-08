@@ -336,6 +336,7 @@ EXPORTS
 	gst_clock_single_shot_id_reinit
 	gst_clock_type_get_type
 	gst_clock_unadjust_unlocked
+	gst_clock_unadjust_with_calibration
 	gst_clock_wait_for_sync
 	gst_context_get_context_type
 	gst_context_get_structure
@@ -1398,7 +1399,6 @@ EXPORTS
 	gst_tracer_log_trace
 	gst_tracer_register
 	gst_tracing_register_hook
-	gst_tracing_register_hook_id
 	gst_type_find_factory_call_function
 	gst_type_find_factory_get_caps
 	gst_type_find_factory_get_extensions

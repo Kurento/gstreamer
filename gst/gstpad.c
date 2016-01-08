@@ -1853,6 +1853,8 @@ event_wrap (GstPad * pad, GstObject * object, GstEvent * event)
  * @notify: notify called when @event will not be used anymore.
  *
  * Sets the given event handler for the pad.
+ *
+ * Since: 1.8
  */
 void
 gst_pad_set_event_full_function_full (GstPad * pad,
@@ -3901,7 +3903,7 @@ gst_pad_query (GstPad * pad, GstQuery * query)
 
   GST_DEBUG_OBJECT (pad, "sent query %p (%s), result %d", query,
       GST_QUERY_TYPE_NAME (query), res);
-  GST_TRACER_PAD_QUERY_POST (pad, res, query);
+  GST_TRACER_PAD_QUERY_POST (pad, query, res);
 
   if (res != TRUE)
     goto query_failed;
@@ -6136,7 +6138,7 @@ gst_pad_probe_info_get_buffer (GstPadProbeInfo * info)
  * gst_pad_probe_info_get_buffer_list:
  * @info: a #GstPadProbeInfo
  *
- * Returns: (transfer none): The #GstBufferlist from the probe
+ * Returns: (transfer none): The #GstBufferList from the probe
  */
 
 GstBufferList *

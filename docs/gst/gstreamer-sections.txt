@@ -630,6 +630,7 @@ gst_clock_get_internal_time
 gst_clock_adjust_unlocked
 gst_clock_unadjust_unlocked
 gst_clock_adjust_with_calibration
+gst_clock_unadjust_with_calibration
 gst_clock_get_calibration
 gst_clock_set_calibration
 gst_clock_get_timeout
@@ -1855,6 +1856,8 @@ gst_pad_probe_info_get_query
 GST_PAD_PROBE_INFO_OFFSET
 GST_PAD_PROBE_INFO_SIZE
 
+GST_PAD_PROBE_INFO_FLOW_RETURN
+
 GstPadProbeCallback
 gst_pad_add_probe
 gst_pad_remove_probe
@@ -1887,6 +1890,10 @@ GstPadGetRangeFunction
 gst_pad_set_event_function
 gst_pad_set_event_function_full
 GstPadEventFunction
+
+gst_pad_set_event_full_function
+gst_pad_set_event_full_function_full
+GstPadEventFullFunction
 
 gst_pad_set_link_function
 gst_pad_set_link_function_full
@@ -1984,6 +1991,7 @@ GST_PAD_ACTIVATEMODEFUNC
 GST_PAD_CHAINFUNC
 GST_PAD_CHAINLISTFUNC
 GST_PAD_EVENTFUNC
+GST_PAD_EVENTFULLFUNC
 GST_PAD_GETRANGEFUNC
 GST_PAD_QUERYFUNC
 GST_PAD_ITERINTLINKFUNC
@@ -2789,6 +2797,7 @@ GST_TAG_IMAGE_ORIENTATION
 GST_TAG_PUBLISHER
 GST_TAG_INTERPRETED_BY
 GST_TAG_MIDI_BASE_NOTE
+GST_TAG_PRIVATE_DATA
 
 gst_tag_register
 gst_tag_register_static
@@ -3026,6 +3035,108 @@ gst_toc_entry_get_type
 gst_toc_entry_type_get_type
 gst_toc_loop_type_get_type
 gst_toc_scope_get_type
+</SECTION>
+
+
+<SECTION>
+<FILE>gsttracer</FILE>
+<TITLE>GstTracer</TITLE>
+GstTracer
+gst_tracer_register
+gst_tracing_register_hook
+gst_tracer_log_trace
+
+GstTracerHookBinAddPost
+GstTracerHookBinAddPre
+GstTracerHookBinRemovePost
+GstTracerHookBinRemovePre
+GstTracerHookElementAddPad
+GstTracerHookElementChangeStatePost
+GstTracerHookElementChangeStatePre
+GstTracerHookElementNew
+GstTracerHookElementPostMessagePost
+GstTracerHookElementPostMessagePre
+GstTracerHookElementQueryPost
+GstTracerHookElementQueryPre
+GstTracerHookElementRemovePad
+GstTracerHookPadLinkPost
+GstTracerHookPadLinkPre
+GstTracerHookPadPullRangePost
+GstTracerHookPadPullRangePre
+GstTracerHookPadPushEventPost
+GstTracerHookPadPushEventPre
+GstTracerHookPadPushListPost
+GstTracerHookPadPushListPre
+GstTracerHookPadPushPost
+GstTracerHookPadPushPre
+GstTracerHookPadQueryPost
+GstTracerHookPadQueryPre
+GstTracerHookPadUnlinkPost
+GstTracerHookPadUnlinkPre
+<SUBSECTION Standard>
+GST_TRACER
+GST_IS_TRACER
+GST_TYPE_TRACER
+GST_TRACER_CLASS
+GST_IS_TRACER_CLASS
+GST_TRACER_GET_CLASS
+GST_TRACER_CAST
+<SUBSECTION Private>
+GST_TRACER_ARGS
+GST_TRACER_DISPATCH
+GST_TRACER_IS_ENABLED
+GST_TRACER_QUARK
+GST_TRACER_TS
+GST_TRACER_BIN_ADD_POST
+GST_TRACER_BIN_ADD_PRE
+GST_TRACER_BIN_REMOVE_POST
+GST_TRACER_BIN_REMOVE_PRE
+GST_TRACER_ELEMENT_ADD_PAD
+GST_TRACER_ELEMENT_CHANGE_STATE_POST
+GST_TRACER_ELEMENT_CHANGE_STATE_PRE
+GST_TRACER_ELEMENT_NEW
+GST_TRACER_ELEMENT_POST_MESSAGE_POST
+GST_TRACER_ELEMENT_POST_MESSAGE_PRE
+GST_TRACER_ELEMENT_QUERY_POST
+GST_TRACER_ELEMENT_QUERY_PRE
+GST_TRACER_ELEMENT_REMOVE_PAD
+GST_TRACER_PAD_LINK_POST
+GST_TRACER_PAD_LINK_PRE
+GST_TRACER_PAD_PULL_RANGE_POST
+GST_TRACER_PAD_PULL_RANGE_PRE
+GST_TRACER_PAD_PUSH_EVENT_POST
+GST_TRACER_PAD_PUSH_EVENT_PRE
+GST_TRACER_PAD_PUSH_LIST_POST
+GST_TRACER_PAD_PUSH_LIST_PRE
+GST_TRACER_PAD_PUSH_POST
+GST_TRACER_PAD_PUSH_PRE
+GST_TRACER_PAD_QUERY_POST
+GST_TRACER_PAD_QUERY_PRE
+GST_TRACER_PAD_UNLINK_POST
+GST_TRACER_PAD_UNLINK_PRE
+GstTracerHook
+GstTracerQuarkId
+gst_tracer_get_type
+GstTracerPrivate
+</SECTION>
+
+
+<SECTION>
+<FILE>gsttracerfactory</FILE>
+<TITLE>GstTracerFactory</TITLE>
+GstTracerFactory
+gst_tracer_factory_get_list
+<SUBSECTION Standard>
+GstTracerFactoryClass
+GST_TRACER_FACTORY
+GST_IS_TRACER_FACTORY
+GST_TRACER_FACTORY_CLASS
+GST_IS_TRACER_FACTORY_CLASS
+GST_TRACER_FACTORY_GET_CLASS
+GST_TRACER_FACTORY_CAST
+GST_TYPE_TRACER_FACTORY
+<SUBSECTION Private>
+gst_tracer_factory_get_type
 </SECTION>
 
 
@@ -3578,6 +3689,12 @@ gst_device_monitor_remove_filter
 gst_device_monitor_start
 gst_device_monitor_stop
 gst_device_monitor_get_devices
+gst_device_monitor_get_providers
+gst_device_monitor_get_show_all_devices
+gst_device_monitor_set_show_all_devices
+gst_device_provider_get_hidden_providers
+gst_device_provider_hide_provider
+gst_device_provider_unhide_provider
 
 <SUBSECTION Standard>
 GstDeviceMonitorPrivate

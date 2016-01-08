@@ -47,11 +47,19 @@ IGNORE_HFILES= \
 	gst_private.h \
 	gstelementdetails.h \
 	gstmacros.h \
+	gstmarshal.h \
+	math-compat.h \
 	\
 	grammar.tab.h \
 	grammar.tab.pre.h \
-	math-compat.h \
-	types.h
+  parse_lex.h \
+	types.h \
+	\
+	gst-printf.h \
+	printf-args.h \
+	printf-extension.h \
+	printf-parse.h \
+	vasnprintf.h
 
 gst-universe.svg: gst-universe.dot
 	-dot -Tsvg $< | sed 's/\(font-size:[0-9]*\.[0-9]*\);/\1px;/g' >$@
@@ -67,7 +75,7 @@ extra_files = gst-universe.dot
 
 # CFLAGS and LDFLAGS for compiling scan program. Only needed if your app/lib
 # contains GtkObjects/GObjects and you want to document signals and properties.
-GTKDOC_CFLAGS = $(GST_OBJ_CFLAGS)
+GTKDOC_CFLAGS = $(GST_OBJ_CFLAGS) -DGST_USE_UNSTABLE_API
 GTKDOC_LIBS = $(GST_OBJ_LIBS) \
 	$(top_builddir)/gst/libgstreamer-@GST_API_VERSION@.la \
 	$(top_builddir)/libs/gst/base/libgstbase-@GST_API_VERSION@.la \

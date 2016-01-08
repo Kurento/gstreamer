@@ -123,12 +123,14 @@
 static gboolean gst_initialized = FALSE;
 static gboolean gst_deinitialized = FALSE;
 
+GstClockTime _priv_gst_start_time;
+
 #ifdef G_OS_WIN32
 HMODULE _priv_gst_dll_handle = NULL;
 #endif
 
 #ifndef GST_DISABLE_REGISTRY
-GList *_priv_gst_plugin_paths = NULL;   /* for delayed processing in post_init */
+GList *_priv_gst_plugin_paths = NULL;   /* for delayed processing in init_post */
 
 extern gboolean _priv_gst_disable_registry_update;
 #endif
@@ -475,6 +477,9 @@ init_pre (GOptionContext * context, GOptionGroup * group, gpointer data,
     GST_DEBUG ("already initialized");
     return TRUE;
   }
+
+  _priv_gst_start_time = gst_util_get_timestamp ();
+
 #ifndef GST_DISABLE_GST_DEBUG
   _priv_gst_debug_init ();
   priv_gst_dump_dot_dir = g_getenv ("GST_DEBUG_DUMP_DOT_DIR");

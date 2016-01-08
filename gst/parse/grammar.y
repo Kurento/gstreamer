@@ -232,7 +232,7 @@ typedef struct {
   gchar *sink_pad;
   GstElement *sink;
   GstCaps *caps;
-  gulong signal_id;
+  gulong pad_added_signal_id, no_more_pads_signal_id;
 } DelayedLink;
 
 typedef struct {
@@ -251,7 +251,7 @@ static int  gst_resolve_reference(reference_t *rr, GstElement *pipeline){
     bin = GST_BIN (pipeline);
     rr->element = gst_bin_get_by_name_recurse_up (bin, rr->name);
   } else {
-    rr->element = strcmp (GST_ELEMENT_NAME (pipeline), rr->name) == 0 ? 
+    rr->element = strcmp (GST_ELEMENT_NAME (pipeline), rr->name) == 0 ?
 		gst_object_ref(pipeline) : NULL;
   }
   if(rr->element) return 0; /* resolved */
@@ -490,22 +490,44 @@ static void gst_parse_free_delayed_link (DelayedLink *link)
   g_slice_free (DelayedLink, link);
 }
 
+#define PRETTY_PAD_NAME_FMT "%s %s of %s named %s"
+#define PRETTY_PAD_NAME_ARGS(elem, pad_name) \
+  (pad_name ? "pad " : "some"), (pad_name ? pad_name : "pad"), \
+  G_OBJECT_TYPE_NAME(elem), GST_STR_NULL (GST_ELEMENT_NAME (elem))
+
+static void gst_parse_no_more_pads (GstElement *src, gpointer data)
+{
+  DelayedLink *link = data;
+
+  GST_ELEMENT_WARNING(src, PARSE, DELAYED_LINK,
+    (_("Delayed linking failed.")),
+    ("failed delayed linking " PRETTY_PAD_NAME_FMT " to " PRETTY_PAD_NAME_FMT,
+        PRETTY_PAD_NAME_ARGS (src, link->src_pad),
+        PRETTY_PAD_NAME_ARGS (link->sink, link->sink_pad)));
+  /* we keep the handlers connected, so that in case an element still adds a pad
+   * despite no-more-pads, we will consider it for pending delayed links */
+}
+
 static void gst_parse_found_pad (GstElement *src, GstPad *pad, gpointer data)
 {
   DelayedLink *link = data;
 
-  GST_CAT_INFO (GST_CAT_PIPELINE, "trying delayed linking %s:%s to %s:%s",
-                GST_STR_NULL (GST_ELEMENT_NAME (src)), GST_STR_NULL (link->src_pad),
-                GST_STR_NULL (GST_ELEMENT_NAME (link->sink)), GST_STR_NULL (link->sink_pad));
+  GST_CAT_INFO (GST_CAT_PIPELINE,
+                "trying delayed linking " PRETTY_PAD_NAME_FMT " to " PRETTY_PAD_NAME_FMT,
+                PRETTY_PAD_NAME_ARGS (src, link->src_pad),
+                PRETTY_PAD_NAME_ARGS (link->sink, link->sink_pad));
 
   if (gst_element_link_pads_filtered (src, link->src_pad, link->sink,
       link->sink_pad, link->caps)) {
     /* do this here, we don't want to get any problems later on when
      * unlocking states */
-    GST_CAT_DEBUG (GST_CAT_PIPELINE, "delayed linking %s:%s to %s:%s worked",
-               	   GST_STR_NULL (GST_ELEMENT_NAME (src)), GST_STR_NULL (link->src_pad),
-               	   GST_STR_NULL (GST_ELEMENT_NAME (link->sink)), GST_STR_NULL (link->sink_pad));
-    g_signal_handler_disconnect (src, link->signal_id);
+    GST_CAT_DEBUG (GST_CAT_PIPELINE,
+                   "delayed linking " PRETTY_PAD_NAME_FMT " to " PRETTY_PAD_NAME_FMT " worked",
+               	   PRETTY_PAD_NAME_ARGS (src, link->src_pad),
+                   PRETTY_PAD_NAME_ARGS (link->sink, link->sink_pad));
+    g_signal_handler_disconnect (src, link->no_more_pads_signal_id);
+    /* releases 'link' */
+    g_signal_handler_disconnect (src, link->pad_added_signal_id);
   }
 }
 
@@ -527,9 +549,10 @@ gst_parse_perform_delayed_link (GstElement *src, const gchar *src_pad,
 
       /* TODO: maybe we should check if src_pad matches this template's names */
 
-      GST_CAT_DEBUG (GST_CAT_PIPELINE, "trying delayed link %s:%s to %s:%s",
-                     GST_STR_NULL (GST_ELEMENT_NAME (src)), GST_STR_NULL (src_pad),
-                     GST_STR_NULL (GST_ELEMENT_NAME (sink)), GST_STR_NULL (sink_pad));
+      GST_CAT_DEBUG (GST_CAT_PIPELINE,
+                     "trying delayed link " PRETTY_PAD_NAME_FMT " to " PRETTY_PAD_NAME_FMT,
+                     PRETTY_PAD_NAME_ARGS (src, src_pad),
+                     PRETTY_PAD_NAME_ARGS (sink, sink_pad));
 
       data->src_pad = g_strdup (src_pad);
       data->sink = sink;
@@ -539,9 +562,11 @@ gst_parse_perform_delayed_link (GstElement *src, const gchar *src_pad,
       } else {
       	data->caps = NULL;
       }
-      data->signal_id = g_signal_connect_data (src, "pad-added",
+      data->pad_added_signal_id = g_signal_connect_data (src, "pad-added",
           G_CALLBACK (gst_parse_found_pad), data,
           (GClosureNotify) gst_parse_free_delayed_link, (GConnectFlags) 0);
+      data->no_more_pads_signal_id = g_signal_connect (src, "no-more-pads",
+          G_CALLBACK (gst_parse_no_more_pads), data);
       return TRUE;
     }
   }
@@ -565,9 +590,9 @@ gst_parse_perform_link (link_t *link, graph_t *graph)
   g_assert (GST_IS_ELEMENT (sink));
 
   GST_CAT_INFO (GST_CAT_PIPELINE,
-      "linking %s:%s to %s:%s (%u/%u) with caps \"%" GST_PTR_FORMAT "\"",
-      GST_ELEMENT_NAME (src), link->src.name ? link->src.name : "(any)",
-      GST_ELEMENT_NAME (sink), link->sink.name ? link->sink.name : "(any)",
+      "linking " PRETTY_PAD_NAME_FMT " to " PRETTY_PAD_NAME_FMT " (%u/%u) with caps \"%" GST_PTR_FORMAT "\"",
+      PRETTY_PAD_NAME_ARGS (src, link->src.name),
+      PRETTY_PAD_NAME_ARGS (sink, link->sink.name),
       g_slist_length (srcs), g_slist_length (sinks), link->caps);
 
   if (!srcs || !sinks) {
@@ -638,7 +663,7 @@ static int yyerror (void *scanner, graph_t *graph, const char *s);
 
 %token <ss> PARSE_URL
 %token <ss> IDENTIFIER
-%left  <ss> REF PADREF BINREF 
+%left  <ss> REF PADREF BINREF
 %token <ss> ASSIGNMENT
 %token <ss> LINK
 
@@ -746,7 +771,7 @@ elementary:
 *   that are syntactically closed (handled later in this file).
 *	(e.g. fakesrc ! sinkreferencename.padname)
 **************************************************************/
-chain:	openchain			      { $$=$1; 
+chain:	openchain			      { $$=$1;
 						if($$->last.name){
 							SET_ERROR (graph->error, GST_PARSE_ERROR_SYNTAX,
 							_("unexpected reference \"%s\" - ignoring"), $$->last.name);
@@ -790,7 +815,7 @@ link:	LINK				      { $$ = gst_parse_link_new ();
 						$$->sink.name = NULL;
 						$$->src.pads = NULL;
 						$$->sink.pads = NULL;
-						$$->caps = NULL; 
+						$$->caps = NULL;
 						if ($1) {
 						  $$->caps = gst_caps_from_string ($1);
 						  if ($$->caps == NULL)
@@ -913,7 +938,7 @@ reference:	REF morepads		      {
 *   _reference_ on each side. That
 *   works already after the explanations above.
 *	someSourceName.Pad ! someSinkName.
-*	someSourceName.Pad,anotherPad ! someSinkName.Apad,Bpad	
+*	someSourceName.Pad,anotherPad ! someSinkName.Apad,Bpad
 *
 *   If a syntax error occurs, the already finished _chain_s
 *   and _links_ are kept intact.
@@ -948,7 +973,7 @@ assignments:	/* NOP */		      { $$ = NULL; }
 binopener:	'('			      { $$ = gst_parse_strdup(_("bin")); }
 	|	BINREF			      { $$ = $1; }
 	;
-bin:	binopener assignments chainlist ')'   { 
+bin:	binopener assignments chainlist ')'   {
 						chain_t *chain = $3;
 						GSList *walk;
 						GstBin *bin = (GstBin *) gst_element_factory_make ($1, NULL);
@@ -1074,12 +1099,12 @@ priv_gst_parse_launch (const gchar *str, GError **error, GstParseContext *ctx,
     g.chain->last.name=NULL;
     g.chain->last.pads=NULL;
   };
-  
+
   /* ensure elements is not empty */
   if(!g.chain->elements){
     g.chain->elements= g_slist_prepend (NULL, NULL);
   };
-  
+
   /* put all elements in our bin if necessary */
   if(g.chain->elements->next){
     bin = GST_BIN (gst_element_factory_make ("pipeline", NULL));
@@ -1091,7 +1116,7 @@ priv_gst_parse_launch (const gchar *str, GError **error, GstParseContext *ctx,
     }
     g_slist_free (g.chain->elements);
     g.chain->elements = g_slist_prepend (NULL, bin);
-  } 
+  }
 
   ret = (GstElement *) g.chain->elements->data;
   g_slist_free (g.chain->elements);

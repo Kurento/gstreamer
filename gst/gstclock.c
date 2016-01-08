@@ -847,9 +847,10 @@ gst_clock_get_resolution (GstClock * clock)
   return 1;
 }
 
+/* FIXME 2.0: Remove clock parameter below */
 /**
  * gst_clock_adjust_with_calibration:
- * @clock: a #GstClock to use
+ * @clock: (allow-none): a #GstClock to use
  * @internal_target: a clock time
  * @cinternal: a reference internal time
  * @cexternal: a reference external time
@@ -862,6 +863,8 @@ gst_clock_get_resolution (GstClock * clock)
  * same calculation as gst_clock_adjust_unlocked() when called using the
  * current calibration parameters, but doesn't ensure a monotonically
  * increasing result as gst_clock_adjust_unlocked() does.
+ *
+ * Note: The @clock parameter is unused and can be NULL
  *
  * Returns: the converted time of the clock.
  *
@@ -937,6 +940,56 @@ gst_clock_adjust_unlocked (GstClock * clock, GstClockTime internal)
   return priv->last_time;
 }
 
+/* FIXME 2.0: Remove clock parameter below */
+/**
+ * gst_clock_unadjust_with_calibration:
+ * @clock: (allow-none): a #GstClock to use
+ * @external_target: a clock time
+ * @cinternal: a reference internal time
+ * @cexternal: a reference external time
+ * @cnum: the numerator of the rate of the clock relative to its
+ *        internal time
+ * @cdenom: the denominator of the rate of the clock
+ *
+ * Converts the given @external_target clock time to the internal time,
+ * using the passed calibration parameters. This function performs the
+ * same calculation as gst_clock_unadjust_unlocked() when called using the
+ * current calibration parameters.
+ *
+ * Note: The @clock parameter is unused and can be NULL
+ *
+ * Returns: the converted time of the clock.
+ *
+ * Since: 1.8
+ */
+GstClockTime
+gst_clock_unadjust_with_calibration (GstClock * clock,
+    GstClockTime external_target, GstClockTime cinternal,
+    GstClockTime cexternal, GstClockTime cnum, GstClockTime cdenom)
+{
+  GstClockTime ret;
+
+  /* avoid divide by 0 */
+  if (G_UNLIKELY (cnum == 0))
+    cnum = cdenom = 1;
+
+  /* The formula is (external - cexternal) * cdenom / cnum + cinternal */
+  if (G_LIKELY (external_target >= cexternal)) {
+    ret = external_target - cexternal;
+    ret = gst_util_uint64_scale (ret, cdenom, cnum);
+    ret += cinternal;
+  } else {
+    ret = cexternal - external_target;
+    ret = gst_util_uint64_scale (ret, cdenom, cnum);
+    if (G_LIKELY (cinternal > ret))
+      ret = cinternal - ret;
+    else
+      ret = 0;
+  }
+
+  return ret;
+}
+
 /**
  * gst_clock_unadjust_unlocked:
  * @clock: a #GstClock to use
@@ -954,7 +1007,7 @@ gst_clock_adjust_unlocked (GstClock * clock, GstClockTime internal)
 GstClockTime
 gst_clock_unadjust_unlocked (GstClock * clock, GstClockTime external)
 {
-  GstClockTime ret, cinternal, cexternal, cnum, cdenom;
+  GstClockTime cinternal, cexternal, cnum, cdenom;
   GstClockPrivate *priv = clock->priv;
 
   /* get calibration values for readability */
@@ -963,24 +1016,8 @@ gst_clock_unadjust_unlocked (GstClock * clock, GstClockTime external)
   cnum = priv->rate_numerator;
   cdenom = priv->rate_denominator;
 
-  /* avoid divide by 0 */
-  if (G_UNLIKELY (cnum == 0))
-    cnum = cdenom = 1;
-
-  /* The formula is (external - cexternal) * cdenom / cnum + cinternal */
-  if (G_LIKELY (external >= cexternal)) {
-    ret = external - cexternal;
-    ret = gst_util_uint64_scale (ret, cdenom, cnum);
-    ret += cinternal;
-  } else {
-    ret = cexternal - external;
-    ret = gst_util_uint64_scale (ret, cdenom, cnum);
-    if (G_LIKELY (cinternal > ret))
-      ret = cinternal - ret;
-    else
-      ret = 0;
-  }
-  return ret;
+  return gst_clock_unadjust_with_calibration (clock, external, cinternal,
+      cexternal, cnum, cdenom);
 }
 
 /**
@@ -1006,7 +1043,7 @@ gst_clock_get_internal_time (GstClock * clock)
   if (G_UNLIKELY (GST_OBJECT_FLAG_IS_SET (clock,
               GST_CLOCK_FLAG_NEEDS_STARTUP_SYNC) && !clock->priv->synced))
     GST_CAT_WARNING_OBJECT (GST_CAT_CLOCK, clock,
-        "clocked is not synchronized yet");
+        "clock is not synchronized yet");
 
   cclass = GST_CLOCK_GET_CLASS (clock);
 
@@ -1174,6 +1211,12 @@ gst_clock_slave_callback (GstClock * master, GstClockTime time,
   GstClockTime stime, mtime;
   gdouble r_squared;
 
+  if (!gst_clock_is_synced (clock)) {
+    GST_CAT_DEBUG_OBJECT (GST_CAT_CLOCK, clock,
+        "Slave clock is not synced yet");
+    return TRUE;
+  }
+
   stime = gst_clock_get_internal_time (clock);
   mtime = gst_clock_get_time (master);
 
@@ -1224,6 +1267,9 @@ gst_clock_set_master (GstClock * clock, GstClock * master)
   /* we always allow setting the master to NULL */
   if (master && !GST_OBJECT_FLAG_IS_SET (clock, GST_CLOCK_FLAG_CAN_SET_MASTER))
     goto not_supported;
+  if (master && !gst_clock_is_synced (master))
+    goto master_not_synced;
+
   GST_CAT_DEBUG_OBJECT (GST_CAT_CLOCK, clock,
       "slaving %p to master clock %p", clock, master);
   GST_OBJECT_UNLOCK (clock);
@@ -1261,6 +1307,14 @@ not_supported:
   {
     GST_CAT_DEBUG_OBJECT (GST_CAT_CLOCK, clock,
         "cannot be slaved to a master clock");
+    GST_OBJECT_UNLOCK (clock);
+    return FALSE;
+  }
+
+master_not_synced:
+  {
+    GST_CAT_DEBUG_OBJECT (GST_CAT_CLOCK, master,
+        "master clock is not synced yet");
     GST_OBJECT_UNLOCK (clock);
     return FALSE;
   }

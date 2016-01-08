@@ -81,6 +81,7 @@ GST_TIMED_VALUE_CONTROL_SOURCE_LOCK
 GST_TIMED_VALUE_CONTROL_SOURCE_UNLOCK
 <SUBSECTION Private>
 gst_timed_value_control_source_get_type
+gst_control_point_get_type
 </SECTION>
 
 <SECTION>
@@ -778,6 +779,8 @@ gst_flow_combiner_update_flow
 gst_flow_combiner_add_pad
 gst_flow_combiner_remove_pad
 gst_flow_combiner_clear
+gst_flow_combiner_reset
+gst_flow_combiner_update_pad_flow
 <SUBSECTION Standard>
 GST_TYPE_FLOW_COMBINER
 <SUBSECTION Private>
@@ -966,6 +969,7 @@ GST_IS_NET_TIME_PROVIDER_CLASS
 gst_net_time_provider_get_type
 </SECTION>
 
+
 <SECTION>
 <FILE>gstptpclock</FILE>
 <TITLE>GstPtpClock</TITLE>
@@ -983,6 +987,11 @@ gst_ptp_clock_new
 GstPtpStatisticsCallback
 gst_ptp_statistics_callback_add
 gst_ptp_statistics_callback_remove
+
+GST_PTP_STATISTICS_BEST_MASTER_CLOCK_SELECTED
+GST_PTP_STATISTICS_NEW_DOMAIN_FOUND
+GST_PTP_STATISTICS_PATH_DELAY_MEASURED
+GST_PTP_STATISTICS_TIME_UPDATED
 <SUBSECTION Standard>
 GstPtpClockClass
 GstPtpClockPrivate
