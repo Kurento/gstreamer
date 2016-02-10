@@ -1,0 +1,1 @@
+prebuild-command: "./autogen.sh --enable-gtk-doc"
