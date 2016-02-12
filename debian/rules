@@ -222,6 +222,6 @@ DEB_SHLIBDEPS_INCLUDE += debian/$(gst_lib)/usr/lib/$(DEB_HOST_MULTIARCH)
 
 install/$(gst_lib_dev)::
 	gcc -o debian/tmp/usr/bin/gst-codec-info-$(gst_abi) debian/gst-codec-info.c $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) `pkg-config --libs --cflags glib-2.0 gthread-2.0 gmodule-no-export-2.0 gobject-2.0` debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/libgstreamer-$(gst_abi).so -Idebian/tmp/usr/include/gstreamer-$(gst_abi) -Idebian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/gstreamer-$(gst_abi)/include
-	perldoc -o man debian/dh_gstscancodecs > debian/tmp/usr/share/man/man1/dh_gstscancodecs.1
+	perldoc -o man debian/dh_gstscancodecs1.5 > debian/tmp/usr/share/man/man1/dh_gstscancodecs1.5.1
 
 .PHONY: maint

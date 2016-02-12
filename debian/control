@@ -91,7 +91,7 @@ Depends: libgstreamer1.5-0 (= ${binary:Version}),
          libglib2.0-dev,
          ${shlibs:Depends},
          ${misc:Depends},
-         gir1.2-gstreamer-1.5 (= ${binary:Version})
+         gir1.2-gstreamer-1.5 (= ${binary:Version}),
 Recommends: debhelper
 Suggests: gstreamer1.5-doc
 Description: GStreamer core development files
@@ -131,7 +131,7 @@ Section: utils
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          pkg-config,
-         libgstreamer1.5-0 (>= 1.5.0.1~0)
+         libgstreamer1.5-0 (>= 1.7.1.1~20160212115510.199.43d8e8b.wily~0)
 Suggests: gstreamer1.5-plugins-base
 Description: Tools for use with GStreamer
  GStreamer is a streaming media framework, based on graphs of filters

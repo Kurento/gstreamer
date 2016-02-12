@@ -91,8 +91,7 @@ Depends: @GST_LIB@ (= ${binary:Version}),
          libglib2.0-dev,
          ${shlibs:Depends},
          ${misc:Depends},
-         gir1.2-gstreamer-@GST_ABI@ (= ${binary:Version}),
-         libgstreamer1.0-dev
+         gir1.2-gstreamer-@GST_ABI@ (= ${binary:Version})
 Recommends: debhelper
 Suggests: @GST_PKGNAME@-doc
 Description: GStreamer core development files
