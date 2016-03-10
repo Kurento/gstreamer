@@ -4,6 +4,8 @@
  * Copyright 2007 Collabora Ltd.
  *  @author: Olivier Crete <olivier.crete@collabora.co.uk>
  * Copyright 2007 Nokia Corp.
+ * Copyright 2016 Kurento (http://kurento.org/)
+ *  @author: Miguel París <mparisdiaz@gmail.com>
  *
  * gstfunnel.h: Simple Funnel element
  *
@@ -29,6 +31,29 @@
 #include <gst/gst.h>
 
 G_BEGIN_DECLS
+
+/**
+ * GstFunnelForwardStickyEventsMode:
+ *
+ * GST_FUNNEL_FORWARD_STICKY_EVENTS_MODE_NEVER: never forward sticky events (on stream changes)
+ *    from sinkpads to srcpad. Only the events from the first sinkpad are propagated downstream.
+ * GST_FUNNEL_FORWARD_STICKY_EVENTS_MODE_ONCE: only forward once the same sticky event (on stream changes)
+ *    from sinkpads to srcpad.
+ * GST_FUNNEL_FORWARD_STICKY_EVENTS_MODE_ALWAYS: always forward sticky events (on stream changes)
+ *    from sinkpads to srcpad.
+ * RTP_JITTER_BUFFER_MODE_LAST: last mode.
+ *
+ * The different behaviours for forwarding sticky events.
+ */
+typedef enum {
+  GST_FUNNEL_FORWARD_STICKY_EVENTS_MODE_NEVER,
+  GST_FUNNEL_FORWARD_STICKY_EVENTS_MODE_ONCE,
+  GST_FUNNEL_FORWARD_STICKY_EVENTS_MODE_ALWAYS,
+  GST_FUNNEL_FORWARD_STICKY_EVENTS_MODE_LAST
+} GstFunnelForwardStickyEventsMode;
+
+#define GST_TYPE_FUNNEL_FORWARD_STICKY_EVENTS_MODE (gst_funnel_forward_sticky_events_mode_get_type())
+GType gst_funnel_forward_sticky_events_mode_get_type (void);
 
 #define GST_TYPE_FUNNEL \
   (gst_funnel_get_type ())
@@ -56,7 +81,7 @@ struct _GstFunnel {
   GstPad         *srcpad;
 
   GstPad *last_sinkpad;
-  gboolean forward_sticky_events;
+  GstFunnelForwardStickyEventsMode forward_sticky_events_mode;
 };
 
 struct _GstFunnelClass {
