@@ -2281,7 +2281,7 @@ gst_element_query_duration (GstElement * element, GstFormat format,
 /**
  * gst_element_query_convert:
  * @element: a #GstElement to invoke the convert query on.
- * @src_format: (inout): a #GstFormat to convert from.
+ * @src_format: a #GstFormat to convert from.
  * @src_val: a value to convert.
  * @dest_format: the #GstFormat to convert to.
  * @dest_val: (out): a pointer to the result.
@@ -2867,9 +2867,9 @@ gst_pad_query_caps (GstPad * pad, GstCaps * filter)
  * downstream in the preferred order. @filter might be %NULL but
  * if it is not %NULL the returned caps will be a subset of @filter.
  *
- * Returns: the caps of the peer pad with incremented ref-count. When there is
- * no peer pad, this function returns @filter or, when @filter is %NULL, ANY
- * caps.
+ * Returns: (transfer full): the caps of the peer pad with incremented
+ * ref-count. When there is no peer pad, this function returns @filter or,
+ * when @filter is %NULL, ANY caps.
  */
 GstCaps *
 gst_pad_peer_query_caps (GstPad * pad, GstCaps * filter)
@@ -3634,8 +3634,6 @@ gst_util_fraction_add (gint a_n, gint a_d, gint b_n, gint b_d, gint * res_n,
 
   /* This would result in overflow */
   if (G_MAXINT / ABS (a_n) < ABS (b_n))
-    return FALSE;
-  if (G_MAXINT / ABS (a_d) < ABS (b_d))
     return FALSE;
   if (G_MAXINT / ABS (a_d) < ABS (b_d))
     return FALSE;

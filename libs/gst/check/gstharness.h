@@ -63,6 +63,15 @@ struct _GstHarness {
 
 /* Harness creation */
 
+GstHarness * gst_harness_new_empty (void);
+
+void         gst_harness_add_element_full (GstHarness           * h,
+                                           GstElement           * element,
+                                           GstStaticPadTemplate * hsrc,
+                                           const gchar          * element_sinkpad_name,
+                                           GstStaticPadTemplate * hsink,
+                                           const gchar          * element_srcpad_name);
+
 GstHarness * gst_harness_new_full (GstElement * element,
                                    GstStaticPadTemplate * hsrc,
                                    const gchar          * element_sinkpad_name,
@@ -84,6 +93,8 @@ GstHarness * gst_harness_new_with_templates (const gchar * element_name,
 GstHarness * gst_harness_new (const gchar * element_name);
 
 GstHarness * gst_harness_new_parse (const gchar * launchline);
+
+void         gst_harness_add_parse (GstHarness * h, const gchar * launchline);
 
 void         gst_harness_teardown (GstHarness * h);
 
@@ -305,12 +316,40 @@ GstHarnessThread * gst_harness_stress_push_event_start_full (GstHarness * h,
                                                              GstEvent   * event,
                                                              gulong       sleep);
 
+/**
+ * GstHarnessPrepareEventFunc:
+ * @h: a #GstHarness
+ * @data: user data
+ *
+ * Since: 1.8
+ */
+typedef GstEvent * (*GstHarnessPrepareEventFunc) (GstHarness * h, gpointer data);
+
+#define gst_harness_stress_push_event_with_cb_start(h, f, d, n)                \
+  gst_harness_stress_push_event_with_cb_start_full (h, f, d, n, 0)
+
+GstHarnessThread * gst_harness_stress_push_event_with_cb_start_full (GstHarness   * h,
+                                                                     GstHarnessPrepareEventFunc func,
+                                                                     gpointer       data,
+                                                                     GDestroyNotify notify,
+                                                                     gulong         sleep);
+
 #define gst_harness_stress_send_upstream_event_start(h, e)                     \
   gst_harness_stress_push_upstream_event_start_full (h, e, 0)
 
 GstHarnessThread * gst_harness_stress_push_upstream_event_start_full (GstHarness * h,
                                                                       GstEvent   * event,
                                                                       gulong       sleep);
+
+#define gst_harness_stress_send_upstream_event_with_cb_start(h, f, d, n)       \
+  gst_harness_stress_push_upstream_event_with_cb_start_full (h, f, d, n, 0)
+
+GstHarnessThread * gst_harness_stress_push_upstream_event_with_cb_start_full (GstHarness   * h,
+                                                                              GstHarnessPrepareEventFunc func,
+                                                                              gpointer       data,
+                                                                              GDestroyNotify notify,
+                                                                              gulong         sleep);
+
 
 #define gst_harness_stress_property_start(h, n, v)                             \
   gst_harness_stress_property_start_full (h, n, v, G_USEC_PER_SEC / 1000)

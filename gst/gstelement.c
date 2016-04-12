@@ -1230,6 +1230,26 @@ gst_element_class_add_pad_template (GstElementClass * klass,
 }
 
 /**
+ * gst_element_class_add_static_pad_template:
+ * @klass: the #GstElementClass to add the pad template to.
+ * @static_templ: #GstStaticPadTemplate to add as pad template to the element class.
+ *
+ * Adds a pad template to an element class based on the static pad template
+ * @templ. This is mainly used in the _class_init functions of element
+ * implementations. If a pad template with the same name already exists,
+ * the old one is replaced by the new one.
+ *
+ * Since: 1.8
+ */
+void
+gst_element_class_add_static_pad_template (GstElementClass * klass,
+    GstStaticPadTemplate * static_templ)
+{
+  gst_element_class_add_pad_template (klass,
+      gst_static_pad_template_get (static_templ));
+}
+
+/**
  * gst_element_class_add_metadata:
  * @klass: class to set metadata for
  * @key: the key to set
@@ -1566,6 +1586,7 @@ gst_element_send_event (GstElement * element, GstEvent * event)
 
   oclass = GST_ELEMENT_GET_CLASS (element);
 
+  GST_STATE_LOCK (element);
   if (oclass->send_event) {
     GST_CAT_DEBUG (GST_CAT_ELEMENT_PADS, "send %s event on element %s",
         GST_EVENT_TYPE_NAME (event), GST_ELEMENT_NAME (element));
@@ -1573,6 +1594,7 @@ gst_element_send_event (GstElement * element, GstEvent * event)
   } else {
     gst_event_unref (event);
   }
+  GST_STATE_UNLOCK (element);
 
   return result;
 }

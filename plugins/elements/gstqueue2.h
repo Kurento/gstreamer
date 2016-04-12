@@ -87,6 +87,9 @@ struct _GstQueue2
   GstClockTime sinktime, srctime;
   /* TRUE if either position needs to be recalculated */
   gboolean sink_tainted, src_tainted;
+  /* Bitrates taken from tags */
+  guint sink_tags_bitrate;
+  guint src_tags_bitrate;
 
   /* flowreturn when srcpad is paused */
   GstFlowReturn srcresult;
@@ -103,6 +106,7 @@ struct _GstQueue2
   GstQueue2Size cur_level;       /* currently in the queue */
   GstQueue2Size max_level;       /* max. amount of data allowed in the queue */
   gboolean use_buffering;
+  gboolean use_tags_bitrate;
   gboolean use_rate_estimate;
   GstClockTime buffering_interval;
   gint low_percent;             /* low/high watermarks for buffering */
@@ -166,9 +170,6 @@ struct _GstQueue2
 struct _GstQueue2Class
 {
   GstElementClass parent_class;
-
-  /* signals */
-  void (*overrun)       (GstQueue2 *queue2);
 };
 
 G_GNUC_INTERNAL GType gst_queue2_get_type (void);

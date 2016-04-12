@@ -196,8 +196,7 @@ gst_file_src_class_init (GstFileSrcClass * klass)
       "Source/File",
       "Read from arbitrary point in a file",
       "Erik Walthinsen <omega@cse.ogi.edu>");
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&srctemplate));
+  gst_element_class_add_static_pad_template (gstelement_class, &srctemplate);
 
   gstbasesrc_class->start = GST_DEBUG_FUNCPTR (gst_file_src_start);
   gstbasesrc_class->stop = GST_DEBUG_FUNCPTR (gst_file_src_stop);
@@ -350,7 +349,8 @@ gst_file_src_fill (GstBaseSrc * basesrc, guint64 offset, guint length,
     src->read_position = offset;
   }
 
-  gst_buffer_map (buf, &info, GST_MAP_WRITE);
+  if (!gst_buffer_map (buf, &info, GST_MAP_WRITE))
+    goto buffer_write_fail;
   data = info.data;
 
   bytes_read = 0;
@@ -408,6 +408,11 @@ eos:
     gst_buffer_unmap (buf, &info);
     gst_buffer_resize (buf, 0, 0);
     return GST_FLOW_EOS;
+  }
+buffer_write_fail:
+  {
+    GST_ELEMENT_ERROR (src, RESOURCE, WRITE, (NULL), ("Can't write to buffer"));
+    return GST_FLOW_ERROR;
   }
 }
 

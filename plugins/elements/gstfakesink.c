@@ -224,8 +224,8 @@ gst_fake_sink_class_init (GstFakeSinkClass * klass)
       "Erik Walthinsen <omega@cse.ogi.edu>, "
       "Wim Taymans <wim@fluendo.com>, "
       "Mr. 'frag-me-more' Vanderwingo <wingo@fluendo.com>");
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&sinktemplate));
+
+  gst_element_class_add_static_pad_template (gstelement_class, &sinktemplate);
 
   gstelement_class->change_state =
       GST_DEBUG_FUNCPTR (gst_fake_sink_change_state);
@@ -479,9 +479,10 @@ gst_fake_sink_render (GstBaseSink * bsink, GstBuffer * buf)
   if (sink->dump) {
     GstMapInfo info;
 
-    gst_buffer_map (buf, &info, GST_MAP_READ);
-    gst_util_dump_mem (info.data, info.size);
-    gst_buffer_unmap (buf, &info);
+    if (gst_buffer_map (buf, &info, GST_MAP_READ)) {
+      gst_util_dump_mem (info.data, info.size);
+      gst_buffer_unmap (buf, &info);
+    }
   }
   if (sink->num_buffers_left == 0)
     goto eos;

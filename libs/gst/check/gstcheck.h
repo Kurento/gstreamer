@@ -140,7 +140,7 @@ G_STMT_START {                        \
  * wrapper for checks END_TEST
  */
 #define GST_START_TEST(__testname) \
-static void __testname (int __i__)\
+static void __testname (int G_GNUC_UNUSED __i__) \
 {\
   GST_DEBUG ("test start"); \
   GST_DO_CHECK_TEST_ENVIRONMENT; \
@@ -620,6 +620,9 @@ G_STMT_START {                                                  \
     g_printerr ("FIXME: skipping test %s because it's broken\n", G_STRINGIFY (test_func)); \
   } \
 } G_STMT_END
+
+#define tcase_skip_broken_loop_test(chain,test_func,a,b)        \
+  tcase_skip_broken_test (chain, test_func)
 
 G_END_DECLS
 

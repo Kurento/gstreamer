@@ -827,6 +827,7 @@ GST_ELEMENT_METADATA_LONGNAME
 
 <SUBSECTION element-construction>
 gst_element_class_add_pad_template
+gst_element_class_add_static_pad_template
 gst_element_class_get_pad_template
 gst_element_class_get_pad_template_list
 gst_element_class_set_metadata
@@ -1359,6 +1360,9 @@ GST_SEGMENT_FORMAT
 gst_debug_bin_to_dot_data
 gst_debug_bin_to_dot_file
 gst_debug_bin_to_dot_file_with_ts
+gst_info_vasprintf
+gst_info_strdup_vprintf
+gst_info_strdup_printf
 <SUBSECTION Standard>
 GST_TYPE_DEBUG_COLOR_FLAGS
 GST_TYPE_DEBUG_COLOR_MODE
@@ -3044,7 +3048,6 @@ gst_toc_scope_get_type
 GstTracer
 gst_tracer_register
 gst_tracing_register_hook
-gst_tracer_log_trace
 
 GstTracerHookBinAddPost
 GstTracerHookBinAddPre
@@ -3137,6 +3140,32 @@ GST_TRACER_FACTORY_CAST
 GST_TYPE_TRACER_FACTORY
 <SUBSECTION Private>
 gst_tracer_factory_get_type
+</SECTION>
+
+
+<SECTION>
+<FILE>gsttracerrecord</FILE>
+<TITLE>GstTracerRecord</TITLE>
+GstTracerRecord
+GstTracerValueFlags
+GstTracerValueScope
+gst_tracer_record_new
+gst_tracer_record_log
+<SUBSECTION Standard>
+GstTracerRecordClass
+GST_TRACER_RECORD
+GST_IS_TRACER_RECORD
+GST_TRACER_RECORD_CLASS
+GST_IS_TRACER_RECORD_CLASS
+GST_TRACER_RECORD_GET_CLASS
+GST_TRACER_RECORD_CAST
+GST_TYPE_TRACER_RECORD
+GST_TYPE_TRACER_VALUE_FLAGS
+GST_TYPE_TRACER_VALUE_SCOPE
+<SUBSECTION Private>
+gst_tracer_record_get_type
+gst_tracer_value_flags_get_type
+gst_tracer_value_scope_get_type
 </SECTION>
 
 

@@ -96,7 +96,9 @@ LIBGSTCHECK_EXPORTED_FUNCS = \
 	gst_consistency_checker_new \
 	gst_consistency_checker_reset \
 	gst_consistency_checker_free \
+	gst_harness_add_element_full \
 	gst_harness_add_element_src_pad \
+	gst_harness_add_parse \
 	gst_harness_add_probe \
 	gst_harness_add_sink \
 	gst_harness_add_sink_harness \
@@ -118,6 +120,7 @@ LIBGSTCHECK_EXPORTED_FUNCS = \
 	gst_harness_get_last_pushed_timestamp \
 	gst_harness_get_testclock \
 	gst_harness_new \
+	gst_harness_new_empty \
 	gst_harness_new_full \
 	gst_harness_new_parse \
 	gst_harness_new_with_element \
@@ -155,7 +158,9 @@ LIBGSTCHECK_EXPORTED_FUNCS = \
 	gst_harness_stress_push_buffer_start_full \
 	gst_harness_stress_push_buffer_with_cb_start_full \
 	gst_harness_stress_push_event_start_full \
+	gst_harness_stress_push_event_with_cb_start_full \
 	gst_harness_stress_push_upstream_event_start_full \
+	gst_harness_stress_push_upstream_event_with_cb_start_full \
 	gst_harness_stress_requestpad_start_full \
 	gst_harness_stress_statechange_start_full \
 	gst_harness_stress_thread_stop \
@@ -168,21 +173,22 @@ LIBGSTCHECK_EXPORTED_FUNCS = \
 	gst_harness_use_systemclock \
 	gst_harness_use_testclock \
 	gst_harness_wait_for_clock_id_waits \
+	gst_test_clock_advance_time \
+	gst_test_clock_crank \
+	gst_test_clock_get_next_entry_time \
 	gst_test_clock_get_type \
+	gst_test_clock_has_id \
+	gst_test_clock_id_list_get_latest_time \
 	gst_test_clock_new \
 	gst_test_clock_new_with_start_time \
-	gst_test_clock_set_time \
-	gst_test_clock_advance_time \
 	gst_test_clock_peek_id_count \
-	gst_test_clock_has_id \
 	gst_test_clock_peek_next_pending_id \
-	gst_test_clock_wait_for_next_pending_id \
-	gst_test_clock_wait_for_pending_id_count \
-	gst_test_clock_process_next_clock_id \
-	gst_test_clock_get_next_entry_time \
-	gst_test_clock_wait_for_multiple_pending_ids \
 	gst_test_clock_process_id_list \
-	gst_test_clock_id_list_get_latest_time
+	gst_test_clock_process_next_clock_id \
+	gst_test_clock_set_time \
+	gst_test_clock_wait_for_multiple_pending_ids \
+	gst_test_clock_wait_for_next_pending_id \
+	gst_test_clock_wait_for_pending_id_count
 
 # For backwards compatibility with GStreamer < 1.5
 LIBGSTCHECK_EXPORTED_COMPAT_FUNCS = \

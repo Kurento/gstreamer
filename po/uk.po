@@ -3,13 +3,13 @@
 # This file is distributed under the same license as the gstreamer package.
 #
 # Maxim V. Dziumanenko <dziumanenko@gmail.com>, 2004-2007.
-# Yuri Chornoivan <yurchor@ukr.net>, 2011, 2012, 2013, 2014, 2015.
+# Yuri Chornoivan <yurchor@ukr.net>, 2011, 2012, 2013, 2014, 2015, 2016.
 msgid ""
 msgstr ""
-"Project-Id-Version: gstreamer 1.6.0\n"
+"Project-Id-Version: gstreamer 1.7.90\n"
 "Report-Msgid-Bugs-To: http://bugzilla.gnome.org/\n"
-"POT-Creation-Date: 2015-12-24 12:45+0100\n"
-"PO-Revision-Date: 2015-10-15 20:39+0300\n"
+"POT-Creation-Date: 2016-03-24 11:24+0200\n"
+"PO-Revision-Date: 2016-03-02 22:00+0200\n"
 "Last-Translator: Yuri Chornoivan <yurchor@ukr.net>\n"
 "Language-Team: Ukrainian <translation-team-uk@lists.sourceforge.net>\n"
 "Language: uk\n"
@@ -453,6 +453,12 @@ msgstr "композитор"
 msgid "person(s) who composed the recording"
 msgstr "особа чи особи, якими було створено музику запису"
 
+msgid "conductor"
+msgstr "диригент"
+
+msgid "conductor/performer refinement"
+msgstr "диригент або покращувач виконання"
+
 msgid "duration"
 msgstr "тривалість"
 
@@ -817,10 +823,10 @@ msgid "Midi note number of the audio track."
 msgstr "Номер ноти MIDI звукової доріжки."
 
 msgid "private-data"
-msgstr ""
+msgstr "конфіденційні-дані"
 
 msgid "Private data"
-msgstr ""
+msgstr "Конфіденційні дані"
 
 msgid ", "
 msgstr ", "
@@ -860,6 +866,9 @@ msgstr "немає властивості «%s» у елементі «%s»"
 #, c-format
 msgid "could not set property \"%s\" in element \"%s\" to \"%s\""
 msgstr "не вдалося встановити властивість «%s» у елементі «%s» у значення «%s»"
+
+msgid "Delayed linking failed."
+msgstr "Спроба відкладеного компонування зазнала невдачі."
 
 #, c-format
 msgid "could not link %s to %s"
@@ -1006,8 +1015,8 @@ msgstr "примусово визначені можливості"
 msgid "force caps without doing a typefind"
 msgstr "примусово визначити можливості без виконання typefind"
 
-msgid "Stream contains not enough data."
-msgstr "Потік не містить достатньо даних."
+msgid "Stream doesn't contain enough data."
+msgstr "У потоці міститься недостатньо даних."
 
 msgid "Stream contains no data."
 msgstr "Потік не містить даних."

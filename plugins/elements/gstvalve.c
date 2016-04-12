@@ -67,7 +67,7 @@ static void gst_valve_get_property (GObject * object,
 
 static GstFlowReturn gst_valve_chain (GstPad * pad, GstObject * parent,
     GstBuffer * buffer);
-static gboolean gst_valve_event (GstPad * pad, GstObject * parent,
+static gboolean gst_valve_sink_event (GstPad * pad, GstObject * parent,
     GstEvent * event);
 static gboolean gst_valve_query (GstPad * pad, GstObject * parent,
     GstQuery * query);
@@ -95,10 +95,8 @@ gst_valve_class_init (GstValveClass * klass)
           DEFAULT_DROP, G_PARAM_READWRITE | GST_PARAM_MUTABLE_PLAYING |
           G_PARAM_STATIC_STRINGS));
 
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&srctemplate));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&sinktemplate));
+  gst_element_class_add_static_pad_template (gstelement_class, &srctemplate);
+  gst_element_class_add_static_pad_template (gstelement_class, &sinktemplate);
 
   gst_element_class_set_static_metadata (gstelement_class, "Valve element",
       "Filter", "Drops buffers and events or lets them through",
@@ -112,8 +110,6 @@ gst_valve_init (GstValve * valve)
   valve->discont = FALSE;
 
   valve->srcpad = gst_pad_new_from_static_template (&srctemplate, "src");
-  gst_pad_set_event_function (valve->srcpad,
-      GST_DEBUG_FUNCPTR (gst_valve_event));
   gst_pad_set_query_function (valve->srcpad,
       GST_DEBUG_FUNCPTR (gst_valve_query));
   GST_PAD_SET_PROXY_CAPS (valve->srcpad);
@@ -123,7 +119,7 @@ gst_valve_init (GstValve * valve)
   gst_pad_set_chain_function (valve->sinkpad,
       GST_DEBUG_FUNCPTR (gst_valve_chain));
   gst_pad_set_event_function (valve->sinkpad,
-      GST_DEBUG_FUNCPTR (gst_valve_event));
+      GST_DEBUG_FUNCPTR (gst_valve_sink_event));
   gst_pad_set_query_function (valve->sinkpad,
       GST_DEBUG_FUNCPTR (gst_valve_query));
   GST_PAD_SET_PROXY_CAPS (valve->sinkpad);
@@ -218,7 +214,7 @@ gst_valve_chain (GstPad * pad, GstObject * parent, GstBuffer * buffer)
 
 
 static gboolean
-gst_valve_event (GstPad * pad, GstObject * parent, GstEvent * event)
+gst_valve_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
 {
   GstValve *valve;
   gboolean is_sticky = GST_EVENT_IS_STICKY (event);

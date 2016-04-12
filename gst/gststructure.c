@@ -1877,7 +1877,7 @@ gst_structure_to_abbr (GType type)
 }
 
 static GType
-gst_structure_value_get_generic_type (GValue * val)
+gst_structure_value_get_generic_type (const GValue * val)
 {
   if (G_VALUE_TYPE (val) == GST_TYPE_LIST
       || G_VALUE_TYPE (val) == GST_TYPE_ARRAY) {
@@ -1941,6 +1941,51 @@ priv_gst_structure_append_to_gstring (const GstStructure * structure,
   return TRUE;
 }
 
+gboolean
+priv__gst_structure_append_template_to_gstring (GQuark field_id,
+    const GValue * value, gpointer user_data)
+{
+  GType type = gst_structure_value_get_generic_type (value);
+  GString *s = (GString *) user_data;
+
+  g_string_append_len (s, ", ", 2);
+  /* FIXME: do we need to escape fieldnames? */
+  g_string_append (s, g_quark_to_string (field_id));
+  g_string_append_len (s, "=(", 2);
+  g_string_append (s, gst_structure_to_abbr (type));
+  g_string_append_c (s, ')');
+
+  //TODO(ensonic): table like GstStructureAbbreviation (or extend it)
+  if (type == G_TYPE_INT) {
+    g_string_append_len (s, "%i", 2);
+  } else if (type == G_TYPE_UINT) {
+    g_string_append_len (s, "%u", 2);
+  } else if (type == G_TYPE_FLOAT) {
+    g_string_append_len (s, "%f", 2);
+  } else if (type == G_TYPE_DOUBLE) {
+    g_string_append_len (s, "%lf", 3);
+  } else if (type == G_TYPE_STRING) {
+    g_string_append_len (s, "%s", 2);
+  } else if (type == G_TYPE_BOOLEAN) {
+    /* we normally store this as a string, but can parse it also from an int */
+    g_string_append_len (s, "%i", 2);
+  } else if (type == G_TYPE_INT64) {
+    g_string_append (s, "%" G_GINT64_FORMAT);
+  } else if (type == G_TYPE_UINT64) {
+    g_string_append (s, "%" G_GUINT64_FORMAT);
+  } else if (type == GST_TYPE_STRUCTURE) {
+    g_string_append (s, "%" GST_WRAPPED_PTR_FORMAT);
+  } else if (g_type_is_a (type, G_TYPE_ENUM)
+      || g_type_is_a (type, G_TYPE_FLAGS)) {
+    g_string_append (s, "%i");
+  } else {
+    GST_WARNING ("unhandled type: %s", g_type_name (type));
+    g_string_append (s, "%" GST_WRAPPED_PTR_FORMAT);
+  }
+
+  return TRUE;
+}
+
 /**
  * gst_structure_to_string:
  * @structure: a #GstStructure
@@ -1948,7 +1993,7 @@ priv_gst_structure_append_to_gstring (const GstStructure * structure,
  * Converts @structure to a human-readable string representation.
  *
  * For debugging purposes its easier to do something like this:
- * |[
+ * |[<!-- language="C" -->
  * GST_LOG ("structure is %" GST_PTR_FORMAT, structure);
  * ]|
  * This prints the structure in human readable form.

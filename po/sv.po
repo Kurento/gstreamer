@@ -1,16 +1,16 @@
 # Swedish messages for gstreamer.
-# Copyright (C) 2004-2015 Free Software Foundation, Inc.
+# Copyright © 2004-2016 Free Software Foundation, Inc.
 # This file is distributed under the same license as the gstreamer package.
 # Christian Rose <menthos@menthos.com>, 2004, 2005.
 # Daniel Nylander <po@danielnylander.se>, 2007, 2008, 2009, 2010, 2011.
-# Sebastian Rasmussen <sebras@gmail.com>, 2014, 2015.
+# Sebastian Rasmussen <sebras@gmail.com>, 2014, 2015, 2016.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: gstreamer 1.6.0\n"
+"Project-Id-Version: gstreamer 1.7.90\n"
 "Report-Msgid-Bugs-To: http://bugzilla.gnome.org/\n"
-"POT-Creation-Date: 2015-12-24 12:45+0100\n"
-"PO-Revision-Date: 2015-11-01 00:50+0100\n"
+"POT-Creation-Date: 2016-03-24 11:24+0200\n"
+"PO-Revision-Date: 2016-03-02 22:19+0100\n"
 "Last-Translator: Sebastian Rasmussen <sebras@gmail.com>\n"
 "Language-Team: Swedish <tp-sv@listor.tp-sv.se>\n"
 "Language: sv\n"
@@ -18,7 +18,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"X-Generator: Poedit 1.8.6\n"
+"X-Generator: Poedit 1.8.7\n"
 
 msgid "Print the GStreamer version"
 msgstr "Skriv ut GStreamer-versionen"
@@ -455,6 +455,12 @@ msgstr "kompositör"
 msgid "person(s) who composed the recording"
 msgstr "person(er) som komponerade inspelningen"
 
+msgid "conductor"
+msgstr "konduktör"
+
+msgid "conductor/performer refinement"
+msgstr "konduktör/artist förfining"
+
 msgid "duration"
 msgstr "varaktighet"
 
@@ -819,10 +825,10 @@ msgid "Midi note number of the audio track."
 msgstr "Midi-not-nummer för ljudspåret."
 
 msgid "private-data"
-msgstr ""
+msgstr "privat-data"
 
 msgid "Private data"
-msgstr ""
+msgstr "Privat data"
 
 msgid ", "
 msgstr ", "
@@ -862,6 +868,9 @@ msgstr "ingen \"%s\"-egenskap i elementet \"%s\""
 #, c-format
 msgid "could not set property \"%s\" in element \"%s\" to \"%s\""
 msgstr "kunde inte ställa in egenskapen \"%s\" i elementet \"%s\" till \"%s\""
+
+msgid "Delayed linking failed."
+msgstr "Fördröjd länkning misslyckades."
 
 #, c-format
 msgid "could not link %s to %s"
@@ -1008,7 +1017,7 @@ msgstr "tvinga förmågor"
 msgid "force caps without doing a typefind"
 msgstr "tvinga förmågor utan att göra en typefind"
 
-msgid "Stream contains not enough data."
+msgid "Stream doesn't contain enough data."
 msgstr "Strömmen innehåller inte tillräckligt med data."
 
 msgid "Stream contains no data."

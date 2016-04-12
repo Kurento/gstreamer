@@ -221,6 +221,10 @@ _priv_gst_tag_initialize (void)
       _("composer"),
       _("person(s) who composed the recording"),
       gst_tag_merge_strings_with_comma);
+  gst_tag_register_static (GST_TAG_CONDUCTOR, GST_TAG_FLAG_META,
+      G_TYPE_STRING,
+      _("conductor"),
+      _("conductor/performer refinement"), gst_tag_merge_strings_with_comma);
   gst_tag_register_static (GST_TAG_DURATION, GST_TAG_FLAG_DECODED,
       G_TYPE_UINT64,
       _("duration"), _("length in GStreamer time units (nanoseconds)"), NULL);
@@ -1374,6 +1378,7 @@ void
 gst_tag_list_remove_tag (GstTagList * list, const gchar * tag)
 {
   g_return_if_fail (GST_IS_TAG_LIST (list));
+  g_return_if_fail (gst_tag_list_is_writable (list));
   g_return_if_fail (tag != NULL);
 
   gst_structure_remove_field (GST_TAG_LIST_STRUCTURE (list), tag);

@@ -5,10 +5,10 @@
 # Tianze Wang <zwpwjwtz@126.com>, 2015.
 msgid ""
 msgstr ""
-"Project-Id-Version: gstreamer 1.6.0\n"
+"Project-Id-Version: gstreamer 1.7.90\n"
 "Report-Msgid-Bugs-To: http://bugzilla.gnome.org/\n"
-"POT-Creation-Date: 2015-12-24 12:45+0100\n"
-"PO-Revision-Date: 2015-10-16 19:25+0800\n"
+"POT-Creation-Date: 2016-03-24 11:24+0200\n"
+"PO-Revision-Date: 2016-03-03 12:49+0800\n"
 "Last-Translator: Tianze Wang <zwpwjwtz@126.com>\n"
 "Language-Team: Chinese (simplified) <i18n-zh@googlegroups.com>\n"
 "Language: zh_CN\n"
@@ -16,7 +16,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Poedit 1.8.5\n"
+"X-Generator: Poedit 1.8.7\n"
 
 msgid "Print the GStreamer version"
 msgstr "打印 GStreamer 版本"
@@ -434,6 +434,12 @@ msgstr "作曲人"
 msgid "person(s) who composed the recording"
 msgstr "负责录制的人"
 
+msgid "conductor"
+msgstr "指挥"
+
+msgid "conductor/performer refinement"
+msgstr "现场指挥/演奏者"
+
 msgid "duration"
 msgstr "时期"
 
@@ -786,10 +792,10 @@ msgid "Midi note number of the audio track."
 msgstr "音频轨的midi注解编号"
 
 msgid "private-data"
-msgstr ""
+msgstr "私有数据"
 
 msgid "Private data"
-msgstr ""
+msgstr "专有用途的数据"
 
 msgid ", "
 msgstr ", "
@@ -829,6 +835,9 @@ msgstr "组件“%2$s”中找不到属性“%1$s”"
 #, c-format
 msgid "could not set property \"%s\" in element \"%s\" to \"%s\""
 msgstr "无法设置组件“%2$s”中的属性“%1$s”为“%3$s”"
+
+msgid "Delayed linking failed."
+msgstr "延迟链接失败。"
 
 #, c-format
 msgid "could not link %s to %s"
@@ -975,7 +984,7 @@ msgstr "强制分析"
 msgid "force caps without doing a typefind"
 msgstr "不做类型查找的强制分析"
 
-msgid "Stream contains not enough data."
+msgid "Stream doesn't contain enough data."
 msgstr "流中没有足够数据。"
 
 msgid "Stream contains no data."

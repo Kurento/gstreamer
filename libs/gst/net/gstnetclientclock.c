@@ -242,7 +242,8 @@ gst_net_client_internal_clock_finalize (GObject * object)
   }
 
   if (self->socket != NULL) {
-    g_socket_close (self->socket, NULL);
+    if (!g_socket_close (self->socket, NULL))
+      GST_ERROR_OBJECT (self, "Failed to close socket");
     g_object_unref (self->socket);
     self->socket = NULL;
   }
@@ -740,6 +741,7 @@ gst_net_client_internal_clock_thread (gpointer data)
           if (g_error_matches (err, GST_NTP_ERROR, GST_NTP_ERROR_WRONG_VERSION)
               || g_error_matches (err, GST_NTP_ERROR, GST_NTP_ERROR_KOD_DENY)) {
             GST_ERROR_OBJECT (self, "fatal receive error: %s", err->message);
+            g_clear_error (&err);
             break;
           } else if (g_error_matches (err, GST_NTP_ERROR,
                   GST_NTP_ERROR_KOD_RATE)) {
@@ -955,7 +957,7 @@ struct _GstNetClientClockPrivate
   GstClockTime roundtrip_limit;
   GstClockTime minimum_update_interval;
 
-  GstClockTime base_time;
+  GstClockTime base_time, internal_base_time;
 
   gchar *address;
   gint port;
@@ -1053,6 +1055,7 @@ static void
 gst_net_client_clock_init (GstNetClientClock * self)
 {
   GstNetClientClockPrivate *priv;
+  GstClock *clock;
 
   self->priv = priv = GST_NET_CLIENT_CLOCK_GET_PRIVATE (self);
 
@@ -1064,7 +1067,11 @@ gst_net_client_clock_init (GstNetClientClock * self)
 
   priv->roundtrip_limit = DEFAULT_ROUNDTRIP_LIMIT;
   priv->minimum_update_interval = DEFAULT_MINIMUM_UPDATE_INTERVAL;
+
+  clock = gst_system_clock_obtain ();
   priv->base_time = DEFAULT_BASE_TIME;
+  priv->internal_base_time = gst_clock_get_time (clock);
+  gst_object_unref (clock);
 }
 
 /* Must be called with clocks_lock */
@@ -1114,8 +1121,8 @@ remove_clock_cache (GstClock * clock, GstClockTime time, GstClockID id,
   if (!cache->clocks) {
     gst_clock_id_unref (cache->remove_id);
     gst_object_unref (cache->clock);
-    g_free (cache);
     clocks = g_list_remove (clocks, cache);
+    g_free (cache);
   }
   G_UNLOCK (clocks_lock);
 
@@ -1208,9 +1215,15 @@ gst_net_client_clock_set_property (GObject * object, guint prop_id,
       GST_OBJECT_UNLOCK (self);
       update = TRUE;
       break;
-    case PROP_BASE_TIME:
+    case PROP_BASE_TIME:{
+      GstClock *clock;
+
       self->priv->base_time = g_value_get_uint64 (value);
+      clock = gst_system_clock_obtain ();
+      self->priv->internal_base_time = gst_clock_get_time (clock);
+      gst_object_unref (clock);
       break;
+    }
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -1285,7 +1298,6 @@ gst_net_client_clock_constructed (GObject * object)
 {
   GstNetClientClock *self = GST_NET_CLIENT_CLOCK (object);
   GstClock *internal_clock;
-  GstClockTime internal;
   GList *l;
   ClockCache *cache = NULL;
 
@@ -1333,27 +1345,6 @@ gst_net_client_clock_constructed (GObject * object)
 
   self->priv->internal_clock = internal_clock = cache->clock;
 
-  /* gst_clock_get_time() values are guaranteed to be increasing. because no one
-   * has called get_time on this clock yet we are free to adjust to any value
-   * without worrying about worrying about MAX() issues with the clock's
-   * internal time.
-   */
-
-  /* update our internal time so get_time() give something around base_time.
-     assume that the rate is 1 in the beginning. */
-  internal = gst_clock_get_internal_time (internal_clock);
-  gst_clock_set_calibration (internal_clock, internal,
-      self->priv->base_time, 1, 1);
-
-  {
-    GstClockTime now = gst_clock_get_time (internal_clock);
-
-    if (GST_CLOCK_DIFF (now, self->priv->base_time) > 0 ||
-        GST_CLOCK_DIFF (now, self->priv->base_time + GST_SECOND) < 0) {
-      g_warning ("unable to set the base time, expect sync problems!");
-    }
-  }
-
   /* all systems go, cap'n */
 }
 
@@ -1361,6 +1352,12 @@ static GstClockTime
 gst_net_client_clock_get_internal_time (GstClock * clock)
 {
   GstNetClientClock *self = GST_NET_CLIENT_CLOCK (clock);
+
+  if (!gst_clock_is_synced (self->priv->internal_clock)) {
+    GstClockTime now = gst_clock_get_internal_time (self->priv->internal_clock);
+    return gst_clock_adjust_with_calibration (self->priv->internal_clock, now,
+        self->priv->internal_base_time, self->priv->base_time, 1, 1);
+  }
 
   return gst_clock_get_time (self->priv->internal_clock);
 }

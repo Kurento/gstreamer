@@ -4,13 +4,13 @@
 # Peter Astakhov <astakhovp@mail.ru>, 2005.
 # Артём Попов <artfwo@gmail.com>, 2009.
 # Pavel Maryanov <acid_jack@ukr.net>, 2009.
-# Yuri Kozlov <yuray@komyakino.ru>, 2010, 2011, 2012, 2013, 2014, 2015.
+# Yuri Kozlov <yuray@komyakino.ru>, 2010, 2011, 2012, 2013, 2014, 2015, 2016.
 msgid ""
 msgstr ""
-"Project-Id-Version: gstreamer 1.6.0\n"
+"Project-Id-Version: gstreamer 1.7.90\n"
 "Report-Msgid-Bugs-To: http://bugzilla.gnome.org/\n"
-"POT-Creation-Date: 2015-12-24 12:45+0100\n"
-"PO-Revision-Date: 2015-10-18 13:38+0300\n"
+"POT-Creation-Date: 2016-03-24 11:24+0200\n"
+"PO-Revision-Date: 2016-03-05 08:41+0300\n"
 "Last-Translator: Yuri Kozlov <yuray@komyakino.ru>\n"
 "Language-Team: Russian <gnu@d07.ru>\n"
 "Language: ru\n"
@@ -456,6 +456,12 @@ msgstr "композитор"
 msgid "person(s) who composed the recording"
 msgstr "лицо/лица, написавшие композицию"
 
+msgid "conductor"
+msgstr "дирижёр"
+
+msgid "conductor/performer refinement"
+msgstr "дирижёр/в обработке"
+
 msgid "duration"
 msgstr "длительность"
 
@@ -820,10 +826,10 @@ msgid "Midi note number of the audio track."
 msgstr "Номер ноты midi на аудио дорожке."
 
 msgid "private-data"
-msgstr ""
+msgstr "private-data"
 
 msgid "Private data"
-msgstr ""
+msgstr "Частная информация"
 
 msgid ", "
 msgstr ", "
@@ -863,6 +869,9 @@ msgstr "свойство «%s» не найдено для элемента «%s
 #, c-format
 msgid "could not set property \"%s\" in element \"%s\" to \"%s\""
 msgstr "не удалось установить свойство «%s» элемента «%s» в значение «%s»"
+
+msgid "Delayed linking failed."
+msgstr "Ошибка при отложенной компоновке."
 
 #, c-format
 msgid "could not link %s to %s"
@@ -1009,7 +1018,7 @@ msgstr "форсировать возможности"
 msgid "force caps without doing a typefind"
 msgstr "форсировать возможности без выполнения typefind"
 
-msgid "Stream contains not enough data."
+msgid "Stream doesn't contain enough data."
 msgstr "Поток содержит недостаточно данных."
 
 msgid "Stream contains no data."

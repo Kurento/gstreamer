@@ -23,7 +23,7 @@
  * @short_description: log processing latency stats
  *
  * A tracing module that determines src-to-sink latencies by injecting custom
- * events at sources and process them at sinks. 
+ * events at sources and process them at sinks.
  */
 /* TODO(ensonic): if there are two sources feeding into a mixer/muxer and later
  * we fan-out with tee and have two sinks, each sink would get all two events,
@@ -52,10 +52,12 @@ static GQuark latency_probe_id;
 static GQuark latency_probe_pad;
 static GQuark latency_probe_ts;
 
+static GstTracerRecord *tr_latency;
+
 /* data helpers */
 
 /*
- * Get the element/bin owning the pad. 
+ * Get the element/bin owning the pad.
  *
  * in: a normal pad
  * out: the element
@@ -103,11 +105,8 @@ log_latency (const GstStructure * data, GstPad * sink_pad, guint64 sink_ts)
   src = g_strdup_printf ("%s_%s", GST_DEBUG_PAD_NAME (src_pad));
   sink = g_strdup_printf ("%s_%s", GST_DEBUG_PAD_NAME (sink_pad));
 
-  /* TODO(ensonic): report format is still unstable */
-  gst_tracer_log_trace (gst_structure_new ("latency",
-          "src", G_TYPE_STRING, src,
-          "sink", G_TYPE_STRING, sink,
-          "time", G_TYPE_UINT64, GST_CLOCK_DIFF (src_ts, sink_ts), NULL));
+  gst_tracer_record_log (tr_latency, src, sink,
+      GST_CLOCK_DIFF (src_ts, sink_ts));
   g_free (src);
   g_free (sink);
 }
@@ -204,22 +203,24 @@ gst_latency_tracer_class_init (GstLatencyTracerClass * klass)
 
   /* announce trace formats */
   /* *INDENT-OFF* */
-  gst_tracer_log_trace (gst_structure_new ("latency.class",
+  tr_latency = gst_tracer_record_new ("latency.class",
       "src", GST_TYPE_STRUCTURE, gst_structure_new ("scope",
-          "related-to", G_TYPE_STRING, "pad",  /* TODO: use genum */
+          "type", G_TYPE_GTYPE, G_TYPE_STRING,
+          "related-to", GST_TYPE_TRACER_VALUE_SCOPE, GST_TRACER_VALUE_SCOPE_PAD,
           NULL),
       "sink", GST_TYPE_STRUCTURE, gst_structure_new ("scope",
-          "related-to", G_TYPE_STRING, "pad",  /* TODO: use genum */
+          "type", G_TYPE_GTYPE, G_TYPE_STRING,
+          "related-to", GST_TYPE_TRACER_VALUE_SCOPE, GST_TRACER_VALUE_SCOPE_PAD,
           NULL),
       "time", GST_TYPE_STRUCTURE, gst_structure_new ("value",
           "type", G_TYPE_GTYPE, G_TYPE_UINT64,
           "description", G_TYPE_STRING,
               "time it took for the buffer to go from src to sink ns",
-          "flags", G_TYPE_STRING, "aggregated",  /* TODO: use gflags */ 
+          "flags", GST_TYPE_TRACER_VALUE_FLAGS, GST_TRACER_VALUE_FLAGS_AGGREGATED,
           "min", G_TYPE_UINT64, G_GUINT64_CONSTANT (0),
           "max", G_TYPE_UINT64, G_MAXUINT64,
           NULL),
-      NULL));
+      NULL);
   /* *INDENT-ON* */
 }
 

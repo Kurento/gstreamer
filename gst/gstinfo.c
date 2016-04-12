@@ -50,12 +50,12 @@
  * categories. This is easily done with 3 lines. At the top of your code,
  * declare
  * the variables and set the default category.
- * |[
+ * |[<!-- language="C" -->
  *   GST_DEBUG_CATEGORY_STATIC (my_category);  // define category (statically)
  *   #define GST_CAT_DEFAULT my_category       // set as default
  * ]|
  * After that you only need to initialize the category.
- * |[
+ * |[<!-- language="C" -->
  *   GST_DEBUG_CATEGORY_INIT (my_category, "my category",
  *                            0, "This is my very own");
  * ]|
@@ -608,6 +608,31 @@ gst_info_describe_buffer (GstBuffer * buffer)
 }
 
 static inline gchar *
+gst_info_describe_buffer_list (GstBufferList * list)
+{
+  GstClockTime pts = GST_CLOCK_TIME_NONE;
+  GstClockTime dts = GST_CLOCK_TIME_NONE;
+  gsize total_size = 0;
+  guint n, i;
+
+  n = gst_buffer_list_length (list);
+  for (i = 0; i < n; ++i) {
+    GstBuffer *buf = gst_buffer_list_get (list, i);
+
+    if (i == 0) {
+      pts = GST_BUFFER_PTS (buf);
+      dts = GST_BUFFER_DTS (buf);
+    }
+
+    total_size += gst_buffer_get_size (buf);
+  }
+
+  return g_strdup_printf ("bufferlist: %p, %u buffers, pts %" GST_TIME_FORMAT
+      ", dts %" GST_TIME_FORMAT ", size %" G_GSIZE_FORMAT, list, n,
+      GST_TIME_ARGS (pts), GST_TIME_ARGS (dts), total_size);
+}
+
+static inline gchar *
 gst_info_describe_event (GstEvent * event)
 {
   gchar *s, *ret;
@@ -692,6 +717,9 @@ gst_debug_print_object (gpointer ptr)
   }
   if (GST_IS_BUFFER (ptr)) {
     return gst_info_describe_buffer (GST_BUFFER_CAST (ptr));
+  }
+  if (GST_IS_BUFFER_LIST (ptr)) {
+    return gst_info_describe_buffer_list (GST_BUFFER_LIST_CAST (ptr));
   }
 #ifdef USE_POISONING
   if (*(guint32 *) ptr == 0xffffffff) {
@@ -790,6 +818,9 @@ gst_info_printf_pointer_extension_func (const char *format, void *ptr)
         break;
       case 'B':                /* GST_SEGMENT_FORMAT */
         s = gst_debug_print_segment (ptr);
+        break;
+      case 'a':                /* GST_WRAPPED_PTR_FORMAT */
+        s = priv_gst_string_take_and_wrap (gst_debug_print_object (ptr));
         break;
       default:
         /* must have been compiled against a newer version with an extension
@@ -2214,6 +2245,91 @@ __gst_info_fallback_vasprintf (char **result, char const *format, va_list args)
   return len;
 }
 #endif
+
+/**
+ * gst_info_vasprintf:
+ * @result: (out): the resulting string
+ * @format: a printf style format string
+ * @args: the va_list of printf arguments for @format
+ *
+ * Allocates and fills a string large enough (including the terminating null
+ * byte) to hold the specified printf style @format and @args.
+ *
+ * This function deals with the GStreamer specific printf specifiers
+ * #GST_PTR_FORMAT and #GST_SEGMENT_FORMAT.  If you do not have these specifiers
+ * in your @format string, you do not need to use this function and can use
+ * alternatives such as g_vasprintf().
+ *
+ * Free @result with g_free().
+ *
+ * Returns: the length of the string allocated into @result or -1 on any error
+ *
+ * Since: 1.8
+ */
+gint
+gst_info_vasprintf (gchar ** result, const gchar * format, va_list args)
+{
+  /* This will fallback to __gst_info_fallback_vasprintf() via a #define in
+   * gst_private.h if the debug system is disabled which will remove the gst
+   * specific printf format specifiers */
+  return __gst_vasprintf (result, format, args);
+}
+
+/**
+ * gst_info_strdup_vprintf:
+ * @format: a printf style format string
+ * @args: the va_list of printf arguments for @format
+ *
+ * Allocates, fills and returns a null terminated string from the printf style
+ * @format string and @args.
+ *
+ * See gst_info_vasprintf() for when this function is required.
+ *
+ * Free with g_free().
+ *
+ * Returns: a newly allocated null terminated string or %NULL on any error
+ *
+ * Since: 1.8
+ */
+gchar *
+gst_info_strdup_vprintf (const gchar * format, va_list args)
+{
+  gchar *ret;
+
+  if (gst_info_vasprintf (&ret, format, args) < 0)
+    ret = NULL;
+
+  return ret;
+}
+
+/**
+ * gst_info_strdup_printf:
+ * @format: a printf style format string
+ * @...: the printf arguments for @format
+ *
+ * Allocates, fills and returns a null terminated string from the printf style
+ * @format string and corresponding arguments.
+ *
+ * See gst_info_vasprintf() for when this function is required.
+ *
+ * Free with g_free().
+ *
+ * Returns: a newly allocated null terminated string or %NULL on any error
+ *
+ * Since: 1.8
+ */
+gchar *
+gst_info_strdup_printf (const gchar * format, ...)
+{
+  gchar *ret;
+  va_list args;
+
+  va_start (args, format);
+  ret = gst_info_strdup_vprintf (format, args);
+  va_end (args);
+
+  return ret;
+}
 
 #ifdef GST_ENABLE_FUNC_INSTRUMENTATION
 /* FIXME make this thread specific */

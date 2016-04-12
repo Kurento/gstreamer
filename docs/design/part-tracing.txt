@@ -36,12 +36,12 @@ condition to check if active.
 Certain GStreamer core function (such as gst_pad_push or gst_element_add_pad)
 will call into the tracer subsystem to dispatch into active tracing modules.
 Developers will be able to select a list of plugins by setting an environment
-variable, such as GST_TRACER_PLUGINS="meminfo;dbus". One can also pass parameters to
-plugins:  GST_TRACER_PLUGINS="log(events,buffers);stats(all)".
+variable, such as GST_TRACERS="meminfo;dbus". One can also pass parameters to
+plugins:  GST_TRACERS="log(events,buffers);stats(all)".
 When then plugins are loaded, we'll add them to certain hooks according to which
 they are interested in.
 
-Right now tracing info is logged as GstStructures to the TRACE level. 
+Right now tracing info is logged as GstStructures to the TRACE level.
 Idea: Another env var GST_TRACE_CHANNEL could be used to send the tracing to a
 file or a socket. See https://bugzilla.gnome.org/show_bug.cgi?id=733188 for
 discussion on these environment variables.
@@ -83,7 +83,7 @@ In addition to api hooks we should also provide timer hooks. Interval timers are
 useful to get e.g. resource usage snapshots. Also absolute timers might make
 sense. All this could be implemented with a clock thread. We can use another
 env-var GST_TRACE_TIMERS="100ms,75ms" to configure timers and then pass them to
-the tracers like, GST_TRACER_PLUGINS="rusage(timer=100ms);meminfo(timer=75ms)". Maybe
+the tracers like, GST_TRACERS="rusage(timer=100ms);meminfo(timer=75ms)". Maybe
 we can create them ad-hoc and avoid the GST_TRACE_TIMERS var.
 
 Hooks (* already implemented)
@@ -147,8 +147,8 @@ gst_structure_new ("thread-rusage.class",
     // 'thread-id' is a 'key' to related the record to something as indicated
     // by 'scope' substructure
     "thread-id", GST_TYPE_STRUCTURE, gst_structure_new ("scope",
-        // enum { process, thread, element, pad, context?, ... }
-        "related-to", G_TYPE_STRING, "thread",
+        "type", G_TYPE_GTYPE, G_TYPE_GUINT64,
+        "related-to", GST_TYPE_TRACER_VALUE_SCOPE, GST_TRACER_VALUE_SCOPE_THREAD,
         NULL),
     // next value in the record
     // 'average-cpuload' is a measurement as indicated by the 'value'
@@ -160,9 +160,9 @@ gst_structure_new ("thread-rusage.class",
         "description", G_TYPE_STRING, "average cpu usage per thread",
         // flags that help to use the right graph type
         // flags { aggregated, windowed, cumulative, ... }
-        "flags", G_TYPE_STRING, "aggregated",
+        "flags", GST_TYPE_TRACER_VALUE_FLAGS, GST_TRACER_VALUE_FLAGS_AGGREGATED,
         // value range
-        "min", G_TYPE_UINT, 0, 
+        "min", G_TYPE_UINT, 0,
         "max", G_TYPE_UINT, 100,
         NULL),
     ...
@@ -193,11 +193,11 @@ G_TYPE_UINT64 to specify the time of the event.
 We could also consider to add each value as a READABLE gobject property. The
 property has name/description. We could use qdata for scope and flags (or have
 some new property flags).
-We would also need a new "notify" signal, so that value-change notifications 
+We would also need a new "notify" signal, so that value-change notifications
 would include a time-stamp. This way the tracers would not needs to be aware of
 the logging. The core tracer would register the notify handlers and emit the
 log.
-Or we just add a gst_tracer_class_install_event() and that mimics the 
+Or we just add a gst_tracer_class_install_event() and that mimics the
 g_object_class_install_property().
 
 Frontends can:
@@ -321,17 +321,17 @@ Problems / Open items
     right now the tracer hooks are defined as an enum though.
 
 - when connecting to a running app, we can't easily get the 'current' state if
-  logging is using a socket, as past events are not explicitly stored, we could 
-  determine the current topology and emit events with GST_CLOCK_TIME_NONE as ts                                      
+  logging is using a socket, as past events are not explicitly stored, we could
+  determine the current topology and emit events with GST_CLOCK_TIME_NONE as ts
   to indicate that the events are synthetic.
 
-- we need stable ids for scopes (elements, pads)
+- we need stable ids for scopes (threads, elements, pads)
   - the address can be reused
   - we can use gst_util_seqnum_next()
-  - something like gst_object_get_path_string() won't work as objects are 
+  - something like gst_object_get_path_string() won't work as objects are
     initially without parent
 
-- right now the tracing-hooks are enabled/disabled from configure with 
+- right now the tracing-hooks are enabled/disabled from configure with
   --{enable,disable}-gst-tracer-hooks
   The tracer code and the plugins are still built though. We should add a
   --{enable,disable}-gst-tracer to disabled the whole system, allthough this
@@ -339,26 +339,26 @@ Problems / Open items
 
 Try it
 ======
-GST_DEBUG="GST_TRACER:7,GST_BUFFER*:7,GST_EVENT:7,GST_MESSAGE:7" GST_TRACER_PLUGINS=log gst-launch-1.0 fakesrc num-buffers=10 ! fakesink
+GST_DEBUG="GST_TRACER:7,GST_BUFFER*:7,GST_EVENT:7,GST_MESSAGE:7" GST_TRACERS=log gst-launch-1.0 fakesrc num-buffers=10 ! fakesink
 - traces for buffer flow in TRACE level
 
-GST_DEBUG="GST_TRACER:7" GST_TRACER_PLUGINS="stats;rusage" GST_DEBUG_FILE=trace.log gst-launch-1.0 fakesrc num-buffers=10 sizetype=fixed ! queue ! fakesink
+GST_DEBUG="GST_TRACER:7" GST_TRACERS="stats;rusage" GST_DEBUG_FILE=trace.log gst-launch-1.0 fakesrc num-buffers=10 sizetype=fixed ! queue ! fakesink
 gst-stats-1.0 trace.log
 - print some pipeline stats on exit
 
-GST_DEBUG="GST_TRACER:7" GST_TRACER_PLUGINS="stats;rusage" GST_DEBUG_FILE=trace.log /usr/bin/gst-play-1.0 --interactive $HOME/Videos/movie.mp4
+GST_DEBUG="GST_TRACER:7" GST_TRACERS="stats;rusage" GST_DEBUG_FILE=trace.log /usr/bin/gst-play-1.0 --interactive $HOME/Videos/movie.mp4
 ./scripts/gst-plot-traces.sh --format=png | gnuplot
 eog trace.log.*.png
 - get ts, average-cpuload, current-cpuload, time and plot
 
-GST_DEBUG="GST_TRACER:7" GST_TRACER_PLUGINS=latency gst-launch-1.0 audiotestsrc num-buffers=10 ! audioconvert ! volume volume=0.7 ! autoaudiosink
+GST_DEBUG="GST_TRACER:7" GST_TRACERS=latency gst-launch-1.0 audiotestsrc num-buffers=10 ! audioconvert ! volume volume=0.7 ! autoaudiosink
 - print processing latencies
 
 Performance
 ===========
 run ./tests/benchmarks/tracing.sh <tracer(s)> <media>
 
-egrep -c "(proc|thread)-rusage" trace.log 
+egrep -c "(proc|thread)-rusage" trace.log
 658618
 grep -c "gst_tracer_log_trace" trace.log
 823351

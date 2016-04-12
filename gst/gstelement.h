@@ -346,8 +346,9 @@ typedef enum
  * GST_ELEMENT_NAME:
  * @elem: A #GstElement to query
  *
- * Gets the name of this element. Use only in core as this is not
- * ABI-compatible. Others use gst_element_get_name()
+ * Gets the name of this element. This is not thread-safe by default
+ * (i.e. you will have to make sure the object lock is taken yourself).
+ * If in doubt use gst_element_get_name() instead.
  */
 #define GST_ELEMENT_NAME(elem)                  (GST_OBJECT_NAME(elem))
 
@@ -355,7 +356,9 @@ typedef enum
  * GST_ELEMENT_PARENT:
  * @elem: A #GstElement to query
  *
- * Get the parent object of this element.
+ * Get the parent object of this element. This is not thread-safe by default
+ * (i.e. you will have to make sure the object lock is taken yourself).
+ * If in doubt use gst_object_get_parent() instead.
  */
 #define GST_ELEMENT_PARENT(elem)                (GST_ELEMENT_CAST(GST_OBJECT_PARENT(elem)))
 
@@ -363,7 +366,9 @@ typedef enum
  * GST_ELEMENT_BUS:
  * @elem: A #GstElement to query
  *
- * Get the message bus of this element.
+ * Get the message bus of this element. This is not thread-safe by default
+ * (i.e. you will have to make sure the object lock is taken yourself).
+ * If in doubt use gst_element_get_bus() instead.
  */
 #define GST_ELEMENT_BUS(elem)                   (GST_ELEMENT_CAST(elem)->bus)
 
@@ -371,7 +376,9 @@ typedef enum
  * GST_ELEMENT_CLOCK:
  * @elem: A #GstElement to query
  *
- * Get the clock of this element
+ * Get the clock of this element.This is not thread-safe by default
+ * (i.e. you will have to make sure it is safe yourself).
+ * If in doubt use gst_element_get_clock() instead.
  */
 #define GST_ELEMENT_CLOCK(elem)                 (GST_ELEMENT_CAST(elem)->clock)
 
@@ -495,8 +502,6 @@ G_STMT_START {                                                          \
 #define GST_STATE_LOCK(elem)                   g_rec_mutex_lock(GST_STATE_GET_LOCK(elem))
 #define GST_STATE_TRYLOCK(elem)                g_rec_mutex_trylock(GST_STATE_GET_LOCK(elem))
 #define GST_STATE_UNLOCK(elem)                 g_rec_mutex_unlock(GST_STATE_GET_LOCK(elem))
-#define GST_STATE_UNLOCK_FULL(elem)            g_rec_mutex_unlock_full(GST_STATE_GET_LOCK(elem))
-#define GST_STATE_LOCK_FULL(elem,t)            g_rec_mutex_lock_full(GST_STATE_GET_LOCK(elem), t)
 #define GST_STATE_WAIT(elem)                   g_cond_wait (GST_STATE_GET_COND (elem), \
                                                         GST_OBJECT_GET_LOCK (elem))
 #define GST_STATE_WAIT_UNTIL(elem, end_time)   g_cond_wait_until (GST_STATE_GET_COND (elem), \
@@ -663,6 +668,9 @@ struct _GstElementClass
 
 /* element class pad templates */
 void                    gst_element_class_add_pad_template      (GstElementClass *klass, GstPadTemplate *templ);
+
+void                    gst_element_class_add_static_pad_template (GstElementClass *klass, GstStaticPadTemplate *static_templ);
+
 GstPadTemplate*         gst_element_class_get_pad_template      (GstElementClass *element_class, const gchar *name);
 GList*                  gst_element_class_get_pad_template_list (GstElementClass *element_class);
 

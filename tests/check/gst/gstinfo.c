@@ -89,6 +89,24 @@ GST_START_TEST (info_ptr_format_printf_extension)
     gst_message_unref (msg);
   }
 
+  /* buffer and buffer list */
+  {
+    GstBufferList *list;
+    GstBuffer *buf;
+
+    buf = gst_buffer_new_allocate (NULL, 42, NULL);
+    GST_BUFFER_PTS (buf) = 5 * GST_SECOND;
+    GST_BUFFER_DURATION (buf) = GST_SECOND;
+    GST_LOG ("BUFFER: %" GST_PTR_FORMAT, buf);
+
+    list = gst_buffer_list_new ();
+    gst_buffer_list_add (list, buf);
+    buf = gst_buffer_new_allocate (NULL, 58, NULL);
+    gst_buffer_list_add (list, buf);
+    GST_LOG ("BUFFERLIST: %" GST_PTR_FORMAT, list);
+    gst_buffer_list_unref (list);
+  }
+
 #if 0
   /* TODO: GObject */
   {
@@ -222,7 +240,7 @@ GST_START_TEST (info_dump_mem)
     0x00, 0x00, 0x00, 0x00, 0x00, 0x01, '%', 's', '%', 's'
   };
 
-  e = gst_element_factory_make ("fakesink", NULL);
+  e = gst_pipeline_new ("pipeline");
   GST_DEBUG_CATEGORY_INIT (cat, "dumpcat", 0, "data dump debug category");
   GST_MEMDUMP ("quicktime header", data, sizeof (data));
   GST_MEMDUMP (NULL, data, sizeof (data));
@@ -239,7 +257,7 @@ GST_START_TEST (info_fixme)
   GstDebugCategory *cat = NULL;
   GstElement *e;
 
-  e = gst_element_factory_make ("fakesink", NULL);
+  e = gst_pipeline_new ("pipeline");
   GST_DEBUG_CATEGORY_INIT (cat, "fixcat", 0, "FIXME debug category");
   GST_FIXME ("fix %s thing", "this");
   GST_FIXME_OBJECT (e, "fix %s object", "this");
@@ -309,7 +327,7 @@ GST_START_TEST (info_old_printf_extensions)
   gst_debug_add_log_function (gst_debug_log_default, NULL, NULL);
   gst_debug_remove_log_function (printf_extension_log_func);
   save_messages = FALSE;
-  g_list_foreach (messages, (GFunc) g_free, NULL);
+  g_list_free_full (messages, (GDestroyNotify) g_free);
   messages = NULL;
 }
 
@@ -399,6 +417,7 @@ GST_START_TEST (info_fourcc)
   cmp = ".bcd";
   res = g_strdup_printf ("%" GST_FOURCC_FORMAT, GST_FOURCC_ARGS (0x646362a9));
   fail_unless_equals_string (res, cmp);
+  g_free (res);
 }
 
 GST_END_TEST;

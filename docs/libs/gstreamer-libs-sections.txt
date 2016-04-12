@@ -1215,12 +1215,15 @@ gst_consistency_checker_add_pad
 <INCLUDE>gst/check/check.h</INCLUDE>
 GstHarness
 
+gst_harness_new_empty
 gst_harness_new_full
 gst_harness_new_with_element
 gst_harness_new_with_padnames
 gst_harness_new_with_templates
 gst_harness_new
 gst_harness_new_parse
+gst_harness_add_element_full
+gst_harness_add_parse
 gst_harness_teardown
 
 gst_harness_add_element_src_pad
@@ -1310,8 +1313,15 @@ gst_harness_stress_push_buffer_with_cb_start_full
 gst_harness_stress_push_event_start
 gst_harness_stress_push_event_start_full
 
+GstHarnessPrepareEventFunc
+gst_harness_stress_push_event_with_cb_start
+gst_harness_stress_push_event_with_cb_start_full
+
 gst_harness_stress_send_upstream_event_start
 gst_harness_stress_push_upstream_event_start_full
+
+gst_harness_stress_send_upstream_event_with_cb_start
+gst_harness_stress_push_upstream_event_with_cb_start_full
 
 gst_harness_stress_property_start
 gst_harness_stress_property_start_full
@@ -1342,6 +1352,7 @@ gst_test_clock_get_next_entry_time
 gst_test_clock_wait_for_multiple_pending_ids
 gst_test_clock_id_list_get_latest_time
 gst_test_clock_process_id_list
+gst_test_clock_crank
 <SUBSECTION Standard>
 GST_TEST_CLOCK
 GST_IS_TEST_CLOCK

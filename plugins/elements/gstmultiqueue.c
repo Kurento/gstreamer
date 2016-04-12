@@ -474,10 +474,8 @@ gst_multi_queue_class_init (GstMultiQueueClass * klass)
   gst_element_class_set_static_metadata (gstelement_class,
       "MultiQueue",
       "Generic", "Multiple data queue", "Edward Hervey <edward@fluendo.com>");
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&sinktemplate));
-  gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&srctemplate));
+  gst_element_class_add_static_pad_template (gstelement_class, &sinktemplate);
+  gst_element_class_add_static_pad_template (gstelement_class, &srctemplate);
 
   gstelement_class->request_new_pad =
       GST_DEBUG_FUNCPTR (gst_multi_queue_request_new_pad);
@@ -762,6 +760,7 @@ gst_multi_queue_request_new_pad (GstElement * element, GstPadTemplate * temp,
 {
   GstMultiQueue *mqueue = GST_MULTI_QUEUE (element);
   GstSingleQueue *squeue;
+  GstPad *new_pad;
   guint temp_id = -1;
 
   if (name) {
@@ -772,10 +771,11 @@ gst_multi_queue_request_new_pad (GstElement * element, GstPadTemplate * temp,
   /* Create a new single queue, add the sink and source pad and return the sink pad */
   squeue = gst_single_queue_new (mqueue, temp_id);
 
-  GST_DEBUG_OBJECT (mqueue, "Returning pad %s:%s",
-      GST_DEBUG_PAD_NAME (squeue->sinkpad));
+  new_pad = squeue ? squeue->sinkpad : NULL;
 
-  return squeue ? squeue->sinkpad : NULL;
+  GST_DEBUG_OBJECT (mqueue, "Returning pad %" GST_PTR_FORMAT, new_pad);
+
+  return new_pad;
 }
 
 static void
@@ -1629,8 +1629,9 @@ next:
           goto out_flushing;
         }
 
-        /* Recompute the high time */
+        /* Recompute the high time and ID */
         compute_high_time (mq);
+        compute_high_id (mq);
 
         GST_DEBUG_OBJECT (mq, "queue %d woken from sleeping for not-linked "
             "wakeup with newid %u, highid %u, next_time %" GST_STIME_FORMAT
@@ -1742,23 +1743,24 @@ next:
   GST_MULTI_QUEUE_MUTEX_UNLOCK (mq);
   gst_multi_queue_post_buffering (mq);
 
+  GST_LOG_OBJECT (mq, "sq:%d AFTER PUSHING sq->srcresult: %s", sq->id,
+      gst_flow_get_name (sq->srcresult));
+
+  /* Need to make sure wake up any sleeping pads when we exit */
+  GST_MULTI_QUEUE_MUTEX_LOCK (mq);
+  if (mq->numwaiting > 0 && GST_PAD_IS_EOS (sq->srcpad)) {
+    compute_high_time (mq);
+    compute_high_id (mq);
+    wake_up_next_non_linked (mq);
+  }
+  GST_MULTI_QUEUE_MUTEX_UNLOCK (mq);
+
   if (dropping)
     goto next;
 
   if (result != GST_FLOW_OK && result != GST_FLOW_NOT_LINKED
       && result != GST_FLOW_EOS)
     goto out_flushing;
-
-  GST_LOG_OBJECT (mq, "sq:%d AFTER PUSHING sq->srcresult: %s", sq->id,
-      gst_flow_get_name (sq->srcresult));
-
-  GST_MULTI_QUEUE_MUTEX_LOCK (mq);
-  if (mq->numwaiting > 0 && sq->srcresult == GST_FLOW_EOS) {
-    compute_high_time (mq);
-    compute_high_id (mq);
-    wake_up_next_non_linked (mq);
-  }
-  GST_MULTI_QUEUE_MUTEX_UNLOCK (mq);
 
   return;
 
@@ -1767,11 +1769,7 @@ out_flushing:
     if (object)
       gst_mini_object_unref (object);
 
-    /* Need to make sure wake up any sleeping pads when we exit */
     GST_MULTI_QUEUE_MUTEX_LOCK (mq);
-    compute_high_time (mq);
-    compute_high_id (mq);
-    wake_up_next_non_linked (mq);
     sq->last_query = FALSE;
     g_cond_signal (&sq->query_handled);
 
@@ -2327,10 +2325,10 @@ compute_high_id (GstMultiQueue * mq)
 
       if (sq->nextid < lowest)
         lowest = sq->nextid;
-    } else if (sq->srcresult != GST_FLOW_EOS) {
+    } else if (!GST_PAD_IS_EOS (sq->srcpad)) {
       /* If we don't have a global highid, or the global highid is lower than
        * this single queue's last outputted id, store the queue's one, 
-       * unless the singlequeue is at EOS (srcresult = EOS) */
+       * unless the singlequeue output is at EOS */
       if ((highid == G_MAXUINT32) || (sq->oldid > highid))
         highid = sq->oldid;
     }
@@ -2377,11 +2375,10 @@ compute_high_time (GstMultiQueue * mq)
 
       if (lowest == GST_CLOCK_STIME_NONE || sq->next_time < lowest)
         lowest = sq->next_time;
-    } else if (sq->srcresult != GST_FLOW_EOS) {
+    } else if (!GST_PAD_IS_EOS (sq->srcpad)) {
       /* If we don't have a global high time, or the global high time
        * is lower than this single queue's last outputted time, store
-       * the queue's one, unless the singlequeue is at EOS (srcresult
-       * = EOS) */
+       * the queue's one, unless the singlequeue output is at EOS. */
       if (highest == GST_CLOCK_STIME_NONE
           || (sq->last_time != GST_CLOCK_STIME_NONE && sq->last_time > highest))
         highest = sq->last_time;
@@ -2627,10 +2624,12 @@ gst_single_queue_new (GstMultiQueue * mqueue, guint id)
     if (sq2->id == temp_id) {
       /* If this ID was requested by the caller return NULL,
        * otherwise just get us the next one */
-      if (id == -1)
+      if (id == -1) {
         temp_id = sq2->id + 1;
-      else
+      } else {
+        GST_MULTI_QUEUE_MUTEX_UNLOCK (mqueue);
         return NULL;
+      }
     } else if (sq2->id > temp_id) {
       break;
     }

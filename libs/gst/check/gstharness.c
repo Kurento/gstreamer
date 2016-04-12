@@ -139,6 +139,8 @@ static void gst_harness_stress_free (GstHarnessThread * t);
 
 #define HARNESS_KEY "harness"
 #define HARNESS_REF "harness-ref"
+#define HARNESS_LOCK(h) g_mutex_lock (&(h)->priv->priv_mutex)
+#define HARNESS_UNLOCK(h) g_mutex_unlock (&(h)->priv->priv_mutex)
 
 static GstStaticPadTemplate hsrctemplate = GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_SRC,
@@ -159,6 +161,7 @@ struct _GstHarnessPrivate
 
   gboolean forwarding;
   GstPad *sink_forward_pad;
+  GstTestClock *testclock;
 
   volatile gint recv_buffers;
   volatile gint recv_events;
@@ -183,6 +186,7 @@ struct _GstHarnessPrivate
   gboolean blocking_push_mode;
   GCond blocking_push_cond;
   GMutex blocking_push_mutex;
+  GMutex priv_mutex;
 
   GPtrArray *stress;
 };
@@ -227,6 +231,7 @@ gst_harness_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
 {
   GstHarness *h = g_object_get_data (G_OBJECT (pad), HARNESS_KEY);
   GstHarnessPrivate *priv = h->priv;
+  gboolean ret = TRUE;
   gboolean forward;
 
   g_assert (h != NULL);
@@ -244,13 +249,19 @@ gst_harness_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
       break;
   }
 
+  HARNESS_LOCK (h);
   if (priv->forwarding && forward && priv->sink_forward_pad) {
-    gst_pad_push_event (priv->sink_forward_pad, event);
+    GstPad *fwdpad = gst_object_ref (priv->sink_forward_pad);
+    HARNESS_UNLOCK (h);
+    ret = gst_pad_push_event (fwdpad, event);
+    gst_object_unref (fwdpad);
+    HARNESS_LOCK (h);
   } else {
     g_async_queue_push (priv->sink_event_queue, event);
   }
+  HARNESS_UNLOCK (h);
 
-  return TRUE;
+  return ret;
 }
 
 static void
@@ -362,11 +373,14 @@ gst_harness_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
       break;
     case GST_QUERY_ALLOCATION:
     {
+      HARNESS_LOCK (h);
       if (priv->forwarding && priv->sink_forward_pad != NULL) {
         GstPad *peer = gst_pad_get_peer (priv->sink_forward_pad);
         g_assert (peer != NULL);
+        HARNESS_UNLOCK (h);
         res = gst_pad_query (peer, query);
         gst_object_unref (peer);
+        HARNESS_LOCK (h);
       } else {
         GstCaps *caps;
         gboolean need_pool;
@@ -383,6 +397,7 @@ gst_harness_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
         GST_DEBUG_OBJECT (pad, "proposing allocation %" GST_PTR_FORMAT,
             priv->propose_allocator);
       }
+      HARNESS_UNLOCK (h);
       break;
     }
     default:
@@ -603,6 +618,135 @@ gst_pad_is_request_pad (GstPad * pad)
 }
 
 /**
+ * gst_harness_new_empty: (skip)
+ *
+ * Creates a new empty harness. Use gst_harness_add_element_full() to add
+ * an #GstElement to it.
+ *
+ * MT safe.
+ *
+ * Returns: (transfer full): a #GstHarness, or %NULL if the harness could
+ * not be created
+ *
+ * Since: 1.8
+ */
+GstHarness *
+gst_harness_new_empty (void)
+{
+  GstHarness *h;
+  GstHarnessPrivate *priv;
+
+  h = g_new0 (GstHarness, 1);
+  g_assert (h != NULL);
+  h->priv = g_new0 (GstHarnessPrivate, 1);
+  priv = h->priv;
+
+  GST_DEBUG_OBJECT (h, "about to create new harness %p", h);
+  priv->last_push_ts = GST_CLOCK_TIME_NONE;
+  priv->latency_min = 0;
+  priv->latency_max = GST_CLOCK_TIME_NONE;
+  priv->drop_buffers = FALSE;
+  priv->testclock = GST_TEST_CLOCK_CAST (gst_test_clock_new ());
+
+  priv->propose_allocator = NULL;
+  gst_allocation_params_init (&priv->propose_allocation_params);
+
+  g_mutex_init (&priv->blocking_push_mutex);
+  g_cond_init (&priv->blocking_push_cond);
+  g_mutex_init (&priv->priv_mutex);
+
+  priv->stress = g_ptr_array_new_with_free_func (
+      (GDestroyNotify) gst_harness_stress_free);
+
+  /* we have forwarding on as a default */
+  gst_harness_set_forwarding (h, TRUE);
+
+  return h;
+}
+
+/**
+ * gst_harness_add_element_full: (skip)
+ * @h: a #GstHarness
+ * @element: a #GstElement to add to the harness (transfer none)
+ * @hsrc: (allow-none): a #GstStaticPadTemplate describing the harness srcpad.
+ * %NULL will not create a harness srcpad.
+ * @element_sinkpad_name: (allow-none): a #gchar with the name of the element
+ * sinkpad that is then linked to the harness srcpad. Can be a static or request
+ * or a sometimes pad that has been added. %NULL will not get/request a sinkpad
+ * from the element. (Like if the element is a src.)
+ * @hsink: (allow-none): a #GstStaticPadTemplate describing the harness sinkpad.
+ * %NULL will not create a harness sinkpad.
+ * @element_srcpad_name: (allow-none): a #gchar with the name of the element
+ * srcpad that is then linked to the harness sinkpad, similar to the
+ * @element_sinkpad_name.
+ *
+ * Adds a #GstElement to an empty #GstHarness
+ *
+ * MT safe.
+ *
+ * Since: 1.6
+ */
+void
+gst_harness_add_element_full (GstHarness * h, GstElement * element,
+    GstStaticPadTemplate * hsrc, const gchar * element_sinkpad_name,
+    GstStaticPadTemplate * hsink, const gchar * element_srcpad_name)
+{
+  GstClock *element_clock;
+  gboolean has_sinkpad, has_srcpad;
+
+  g_return_if_fail (element != NULL);
+  g_return_if_fail (h->element == NULL);
+
+  element_clock = GST_ELEMENT_CLOCK (element);
+  h->element = gst_object_ref (element);
+  check_element_type (element, &has_sinkpad, &has_srcpad);
+
+  /* setup the loose srcpad linked to the element sinkpad */
+  if (has_sinkpad)
+    gst_harness_setup_src_pad (h, hsrc, element_sinkpad_name);
+
+  /* setup the loose sinkpad linked to the element srcpad */
+  if (has_srcpad)
+    gst_harness_setup_sink_pad (h, hsink, element_srcpad_name);
+
+  /* as a harness sink, we should not need sync and async */
+  if (has_sinkpad && !has_srcpad)
+    turn_async_and_sync_off (h->element);
+
+  if (h->srcpad != NULL) {
+    gboolean handled;
+    gchar *stream_id = g_strdup_printf ("%s-%p",
+        GST_OBJECT_NAME (h->element), h);
+    handled = gst_pad_push_event (h->srcpad,
+        gst_event_new_stream_start (stream_id));
+    g_assert (handled);
+    g_free (stream_id);
+  }
+
+  /* if the element already has a testclock attached,
+     we replace our own with it, if no clock we attach the testclock */
+  if (element_clock) {
+    if (GST_IS_TEST_CLOCK (element_clock)) {
+      gst_object_replace ((GstObject **) & h->priv->testclock,
+          (GstObject *) GST_ELEMENT_CLOCK (element));
+    }
+  } else {
+    gst_harness_use_testclock (h);
+  }
+
+  /* don't start sources, they start producing data! */
+  if (has_sinkpad)
+    gst_harness_play (h);
+
+  gst_harness_element_ref (h);
+
+  GST_DEBUG_OBJECT (h, "added element to harness %p "
+      "with element_srcpad_name (%p, %s, %s) and element_sinkpad_name (%p, %s, %s)",
+      h, h->srcpad, GST_DEBUG_PAD_NAME (h->srcpad),
+      h->sinkpad, GST_DEBUG_PAD_NAME (h->sinkpad));
+}
+
+/**
  * gst_harness_new_full: (skip)
  * @element: a #GstElement to attach the harness to (transfer none)
  * @hsrc: (allow-none): a #GstStaticPadTemplate describing the harness srcpad.
@@ -632,70 +776,9 @@ gst_harness_new_full (GstElement * element,
     GstStaticPadTemplate * hsink, const gchar * element_srcpad_name)
 {
   GstHarness *h;
-  GstHarnessPrivate *priv;
-  gboolean has_sinkpad, has_srcpad;
-
-  g_return_val_if_fail (element != NULL, NULL);
-
-  h = g_new0 (GstHarness, 1);
-  g_assert (h != NULL);
-  h->priv = g_new0 (GstHarnessPrivate, 1);
-  priv = h->priv;
-
-  GST_DEBUG_OBJECT (h, "about to create new harness %p", h);
-  h->element = gst_object_ref (element);
-  priv->last_push_ts = GST_CLOCK_TIME_NONE;
-  priv->latency_min = 0;
-  priv->latency_max = GST_CLOCK_TIME_NONE;
-  priv->drop_buffers = FALSE;
-
-  priv->propose_allocator = NULL;
-  gst_allocation_params_init (&priv->propose_allocation_params);
-
-  g_mutex_init (&priv->blocking_push_mutex);
-  g_cond_init (&priv->blocking_push_cond);
-
-  check_element_type (element, &has_sinkpad, &has_srcpad);
-
-  /* setup the loose srcpad linked to the element sinkpad */
-  if (has_sinkpad)
-    gst_harness_setup_src_pad (h, hsrc, element_sinkpad_name);
-
-  /* setup the loose sinkpad linked to the element srcpad */
-  if (has_srcpad)
-    gst_harness_setup_sink_pad (h, hsink, element_srcpad_name);
-
-  /* as a harness sink, we should not need sync and async */
-  if (has_sinkpad && !has_srcpad)
-    turn_async_and_sync_off (h->element);
-
-  if (h->srcpad != NULL) {
-    gboolean handled;
-    gchar *stream_id = g_strdup_printf ("%s-%p",
-        GST_OBJECT_NAME (h->element), h);
-    handled = gst_pad_push_event (h->srcpad,
-        gst_event_new_stream_start (stream_id));
-    g_assert (handled);
-    g_free (stream_id);
-  }
-
-  /* don't start sources, they start producing data! */
-  if (has_sinkpad)
-    gst_harness_play (h);
-
-  gst_harness_element_ref (h);
-
-  GST_DEBUG_OBJECT (h, "created new harness %p "
-      "with element_srcpad_name (%p, %s, %s) and element_sinkpad_name (%p, %s, %s)",
-      h, h->srcpad, GST_DEBUG_PAD_NAME (h->srcpad),
-      h->sinkpad, GST_DEBUG_PAD_NAME (h->sinkpad));
-
-  priv->stress = g_ptr_array_new_with_free_func (
-      (GDestroyNotify) gst_harness_stress_free);
-
-  /* we have forwarding on as a default */
-  gst_harness_set_forwarding (h, TRUE);
-
+  h = gst_harness_new_empty ();
+  gst_harness_add_element_full (h, element,
+      hsrc, element_sinkpad_name, hsink, element_srcpad_name);
   return h;
 }
 
@@ -709,7 +792,7 @@ gst_harness_new_full (GstElement * element,
  * srcpad that is then linked to the harness sinkpad. %NULL does not attach a
  * srcpad
  *
- * Creates a new harness. Works in the same way as gst_harness_new_full, only
+ * Creates a new harness. Works in the same way as gst_harness_new_full(), only
  * that generic padtemplates are used for the harness src and sinkpads, which
  * will be sufficient in most usecases.
  *
@@ -738,7 +821,7 @@ gst_harness_new_with_element (GstElement * element,
  * srcpad that is then linked to the harness sinkpad. %NULL does not attach a
  * srcpad
  *
- * Creates a new harness. Works in the same way as gst_harness_new_with_element,
+ * Creates a new harness. Works like gst_harness_new_with_element(),
  * except you specify the factoryname of the #GstElement
  *
  * MT safe.
@@ -770,7 +853,7 @@ gst_harness_new_with_padnames (const gchar * element_name,
  * @hsink: (allow-none): a #GstStaticPadTemplate describing the harness sinkpad.
  * %NULL will not create a harness sinkpad.
  *
- * Creates a new harness, like gst_harness_new_full, except it
+ * Creates a new harness, like gst_harness_new_full(), except it
  * assumes the #GstElement sinkpad is named "sink" and srcpad is named "src"
  *
  * MT safe.
@@ -797,7 +880,7 @@ gst_harness_new_with_templates (const gchar * element_name,
  * gst_harness_new: (skip)
  * @element_name: a #gchar describing the #GstElement name
  *
- * Creates a new harness. Works like gst_harness_new_with_padnames, except it
+ * Creates a new harness. Works like gst_harness_new_with_padnames(), except it
  * assumes the #GstElement sinkpad is named "sink" and srcpad is named "src"
  *
  * MT safe.
@@ -814,30 +897,27 @@ gst_harness_new (const gchar * element_name)
 }
 
 /**
- * gst_harness_new_parse: (skip)
+ * gst_harness_add_parse: (skip)
+ * @h: a #GstHarness
  * @launchline: a #gchar describing a gst-launch type line
  *
- * Creates a new harness, parsing the @launchline and putting that in a #GstBin,
- * and then attches the harness to the bin.
+ * Parses the @launchline and puts that in a #GstBin,
+ * and then attches the supplied #GstHarness to the bin.
  *
  * MT safe.
  *
- * Returns: (transfer full): a #GstHarness, or %NULL if the harness could
- * not be created
- *
  * Since: 1.6
  */
-GstHarness *
-gst_harness_new_parse (const gchar * launchline)
+void
+gst_harness_add_parse (GstHarness * h, const gchar * launchline)
 {
-  GstHarness *h;
   GstBin *bin;
   gchar *desc;
   GstPad *pad;
   GstIterator *iter;
   gboolean done = FALSE;
 
-  g_return_val_if_fail (launchline != NULL, NULL);
+  g_return_if_fail (launchline != NULL);
 
   desc = g_strdup_printf ("bin.( %s )", launchline);
   bin =
@@ -845,7 +925,7 @@ gst_harness_new_parse (const gchar * launchline)
   g_free (desc);
 
   if (G_UNLIKELY (bin == NULL))
-    return NULL;
+    return;
 
   /* find pads and ghost them if necessary */
   if ((pad = gst_bin_find_unlinked_pad (bin, GST_PAD_SRC)) != NULL) {
@@ -875,15 +955,37 @@ gst_harness_new_parse (const gchar * launchline)
       case GST_ITERATOR_ERROR:
         gst_object_unref (bin);
         gst_iterator_free (iter);
-        g_return_val_if_reached (NULL);
+        g_return_if_reached ();
         break;
     }
   }
   gst_iterator_free (iter);
 
-  h = gst_harness_new_full (GST_ELEMENT_CAST (bin),
+  gst_harness_add_element_full (h, GST_ELEMENT_CAST (bin),
       &hsrctemplate, "sink", &hsinktemplate, "src");
   gst_object_unref (bin);
+}
+
+/**
+ * gst_harness_new_parse: (skip)
+ * @launchline: a #gchar describing a gst-launch type line
+ *
+ * Creates a new harness, parsing the @launchline and putting that in a #GstBin,
+ * and then attches the harness to the bin.
+ *
+ * MT safe.
+ *
+ * Returns: (transfer full): a #GstHarness, or %NULL if the harness could
+ * not be created
+ *
+ * Since: 1.6
+ */
+GstHarness *
+gst_harness_new_parse (const gchar * launchline)
+{
+  GstHarness *h;
+  h = gst_harness_new_empty ();
+  gst_harness_add_parse (h, launchline);
   return h;
 }
 
@@ -913,6 +1015,7 @@ gst_harness_teardown (GstHarness * h)
     gst_harness_teardown (h->src_harness);
   }
 
+  gst_object_replace ((GstObject **) & priv->sink_forward_pad, NULL);
   if (h->sink_harness) {
     gst_harness_teardown (h->sink_harness);
   }
@@ -946,9 +1049,6 @@ gst_harness_teardown (GstHarness * h)
     g_async_queue_unref (priv->sink_event_queue);
   }
 
-  if (priv->sink_forward_pad)
-    gst_object_unref (priv->sink_forward_pad);
-
   gst_object_replace ((GstObject **) & priv->propose_allocator, NULL);
   gst_object_replace ((GstObject **) & priv->allocator, NULL);
   gst_object_replace ((GstObject **) & priv->pool, NULL);
@@ -966,10 +1066,14 @@ gst_harness_teardown (GstHarness * h)
 
   g_cond_clear (&priv->blocking_push_cond);
   g_mutex_clear (&priv->blocking_push_mutex);
+  g_mutex_clear (&priv->priv_mutex);
 
   g_ptr_array_unref (priv->stress);
 
   gst_object_unref (h->element);
+
+  gst_object_replace ((GstObject **) & priv->testclock, NULL);
+
   g_free (h->priv);
   g_free (h);
 }
@@ -1176,10 +1280,7 @@ gst_harness_use_systemclock (GstHarness * h)
 void
 gst_harness_use_testclock (GstHarness * h)
 {
-  GstClock *clock = gst_test_clock_new ();
-  g_assert (clock != NULL);
-  gst_element_set_clock (h->element, clock);
-  gst_object_unref (clock);
+  gst_element_set_clock (h->element, GST_CLOCK_CAST (h->priv->testclock));
 }
 
 /**
@@ -1199,17 +1300,7 @@ gst_harness_use_testclock (GstHarness * h)
 GstTestClock *
 gst_harness_get_testclock (GstHarness * h)
 {
-  GstTestClock *testclock = NULL;
-  GstClock *clock;
-
-  clock = gst_element_get_clock (h->element);
-  if (clock) {
-    if (GST_IS_TEST_CLOCK (clock))
-      testclock = GST_TEST_CLOCK (clock);
-    else
-      gst_object_unref (clock);
-  }
-  return testclock;
+  return gst_object_ref (h->priv->testclock);
 }
 
 /**
@@ -1228,13 +1319,7 @@ gst_harness_get_testclock (GstHarness * h)
 gboolean
 gst_harness_set_time (GstHarness * h, GstClockTime time)
 {
-  GstTestClock *testclock;
-  testclock = gst_harness_get_testclock (h);
-  if (testclock == NULL)
-    return FALSE;
-
-  gst_test_clock_set_time (testclock, time);
-  gst_object_unref (testclock);
+  gst_test_clock_set_time (h->priv->testclock, time);
   return TRUE;
 }
 
@@ -1260,12 +1345,9 @@ gst_harness_set_time (GstHarness * h, GstClockTime time)
 gboolean
 gst_harness_wait_for_clock_id_waits (GstHarness * h, guint waits, guint timeout)
 {
-  GstTestClock *testclock = gst_harness_get_testclock (h);
+  GstTestClock *testclock = h->priv->testclock;
   gint64 start_time;
   gboolean ret;
-
-  if (testclock == NULL)
-    return FALSE;
 
   start_time = g_get_monotonic_time ();
   while (gst_test_clock_peek_id_count (testclock) < waits) {
@@ -1279,7 +1361,6 @@ gst_harness_wait_for_clock_id_waits (GstHarness * h, guint waits, guint timeout)
 
   ret = (waits == gst_test_clock_peek_id_count (testclock));
 
-  gst_object_unref (testclock);
   return ret;
 }
 
@@ -1305,32 +1386,7 @@ gst_harness_wait_for_clock_id_waits (GstHarness * h, guint waits, guint timeout)
 gboolean
 gst_harness_crank_single_clock_wait (GstHarness * h)
 {
-  GstTestClock *testclock = gst_harness_get_testclock (h);
-  GstClockID res, pending;
-  gboolean ret = FALSE;
-
-  if (G_LIKELY (testclock != NULL)) {
-    gst_test_clock_wait_for_next_pending_id (testclock, &pending);
-
-    gst_test_clock_set_time (testclock, gst_clock_id_get_time (pending));
-    res = gst_test_clock_process_next_clock_id (testclock);
-    if (res == pending) {
-      GST_DEBUG ("cranked time %" GST_TIME_FORMAT,
-          GST_TIME_ARGS (gst_clock_get_time (GST_CLOCK (testclock))));
-      ret = TRUE;
-    } else {
-      GST_WARNING ("testclock next id != pending (%p != %p)", res, pending);
-    }
-
-    gst_clock_id_unref (res);
-    gst_clock_id_unref (pending);
-
-    gst_object_unref (testclock);
-  } else {
-    GST_WARNING ("No testclock on element %s", GST_ELEMENT_NAME (h->element));
-  }
-
-  return ret;
+  return gst_test_clock_crank (h->priv->testclock);
 }
 
 /**
@@ -1338,7 +1394,7 @@ gst_harness_crank_single_clock_wait (GstHarness * h)
  * @h: a #GstHarness
  * @waits: a #guint describing the number of #GstClockIDs to crank
  *
- * Similar to gst_harness_crank_single_clock_wait, this is the function to use
+ * Similar to gst_harness_crank_single_clock_wait(), this is the function to use
  * if your harnessed element(s) are using more then one gst_clock_id_wait.
  * Failing to do so can (and will) make it racy which #GstClockID you actually
  * are releasing, where as this function will process all the waits at the
@@ -1354,20 +1410,15 @@ gst_harness_crank_single_clock_wait (GstHarness * h)
 gboolean
 gst_harness_crank_multiple_clock_waits (GstHarness * h, guint waits)
 {
-  GstTestClock *testclock;
+  GstTestClock *testclock = h->priv->testclock;
   GList *pending;
   guint processed;
-
-  testclock = gst_harness_get_testclock (h);
-  if (testclock == NULL)
-    return FALSE;
 
   gst_test_clock_wait_for_multiple_pending_ids (testclock, waits, &pending);
   gst_harness_set_time (h, gst_test_clock_id_list_get_latest_time (pending));
   processed = gst_test_clock_process_id_list (testclock, pending);
 
   g_list_free_full (pending, gst_clock_id_unref);
-  gst_object_unref (testclock);
   return processed == waits;
 }
 
@@ -1381,7 +1432,7 @@ gst_harness_crank_multiple_clock_waits (GstHarness * h, guint waits)
  * Non-src #GstElements (like sinks and filters) are automatically set to
  * playing by the #GstHarness, but src #GstElements are not to avoid them
  * starting to produce buffers.
- * Hence, for src #GstElement you will need to call gst_harness_play explicitly.
+ * Hence, for src #GstElement you must call gst_harness_play() explicitly.
  *
  * MT safe.
  *
@@ -1404,9 +1455,9 @@ gst_harness_play (GstHarness * h)
  * @h: a #GstHarness
  *
  * Setting this will make the harness block in the chain-function, and
- * then release when gst_harness_pull or gst_harness_try_pull is called.
+ * then release when gst_harness_pull() or gst_harness_try_pull() is called.
  * Can be useful when wanting to control a src-element that is not implementing
- * gst_clock_id_wait so it can't be controlled by the #GstTestClock, since
+ * gst_clock_id_wait() so it can't be controlled by the #GstTestClock, since
  * it otherwise would produce buffers as fast as possible.
  *
  * MT safe.
@@ -1431,7 +1482,7 @@ gst_harness_set_blocking_push_mode (GstHarness * h)
  * the sink-harness. It will also forward the %GST_QUERY_ALLOCATION.
  *
  * If forwarding is disabled, the user will have to either manually push
- * these events from the src-harness using gst_harness_src_push_event, or
+ * these events from the src-harness using gst_harness_src_push_event(), or
  * create and push them manually. While this will allow full control and
  * inspection of these events, for the most cases having forwarding enabled
  * will be sufficient when writing a test where the src-harness' main function
@@ -1452,6 +1503,15 @@ gst_harness_set_forwarding (GstHarness * h, gboolean forwarding)
     gst_harness_set_forwarding (h->src_harness, forwarding);
   if (h->sink_harness)
     gst_harness_set_forwarding (h->sink_harness, forwarding);
+}
+
+static void
+gst_harness_set_forward_pad (GstHarness * h, GstPad * fwdpad)
+{
+  HARNESS_LOCK (h);
+  gst_object_replace ((GstObject **) & h->priv->sink_forward_pad,
+      (GstObject *) fwdpad);
+  HARNESS_UNLOCK (h);
 }
 
 /**
@@ -1540,6 +1600,8 @@ GstBuffer *
 gst_harness_pull (GstHarness * h)
 {
   GstHarnessPrivate *priv = h->priv;
+  GstBuffer *buf = (GstBuffer *) g_async_queue_timeout_pop (priv->buffer_queue,
+      G_USEC_PER_SEC * 60);
 
   if (priv->blocking_push_mode) {
     g_mutex_lock (&priv->blocking_push_mutex);
@@ -1547,8 +1609,7 @@ gst_harness_pull (GstHarness * h)
     g_mutex_unlock (&priv->blocking_push_mutex);
   }
 
-  return (GstBuffer *) g_async_queue_timeout_pop (priv->buffer_queue,
-      G_USEC_PER_SEC * 60);
+  return buf;
 }
 
 /**
@@ -1569,6 +1630,7 @@ GstBuffer *
 gst_harness_try_pull (GstHarness * h)
 {
   GstHarnessPrivate *priv = h->priv;
+  GstBuffer *buf = (GstBuffer *) g_async_queue_try_pop (priv->buffer_queue);
 
   if (priv->blocking_push_mode) {
     g_mutex_lock (&priv->blocking_push_mutex);
@@ -1576,7 +1638,7 @@ gst_harness_try_pull (GstHarness * h)
     g_mutex_unlock (&priv->blocking_push_mutex);
   }
 
-  return (GstBuffer *) g_async_queue_try_pop (priv->buffer_queue);
+  return buf;
 }
 
 /**
@@ -2045,9 +2107,7 @@ gst_harness_add_src_harness (GstHarness * h,
   if (h->src_harness)
     gst_harness_teardown (h->src_harness);
   h->src_harness = src_harness;
-
-  h->src_harness->priv->sink_forward_pad = gst_object_ref (h->srcpad);
-  gst_harness_use_testclock (h->src_harness);
+  gst_harness_set_forward_pad (h->src_harness, h->srcpad);
   h->src_harness->priv->has_clock_wait = has_clock_wait;
   gst_harness_set_forwarding (h->src_harness, h->priv->forwarding);
 }
@@ -2161,16 +2221,17 @@ gst_harness_src_crank_and_push_many (GstHarness * h, gint cranks, gint pushes)
 {
   GstFlowReturn ret = GST_FLOW_OK;
   gboolean crank;
+  int i;
 
   g_assert (h->src_harness);
   gst_harness_play (h->src_harness);
 
-  for (int i = 0; i < cranks; i++) {
+  for (i = 0; i < cranks; i++) {
     crank = gst_harness_crank_single_clock_wait (h->src_harness);
     g_assert (crank);
   }
 
-  for (int i = 0; i < pushes; i++) {
+  for (i = 0; i < pushes; i++) {
     GstBuffer *buf;
     buf = gst_harness_pull (h->src_harness);
     g_assert (buf != NULL);
@@ -2235,12 +2296,11 @@ gst_harness_add_sink_harness (GstHarness * h, GstHarness * sink_harness)
   GstHarnessPrivate *priv = h->priv;
 
   if (h->sink_harness) {
+    gst_harness_set_forward_pad (h, NULL);
     gst_harness_teardown (h->sink_harness);
-    gst_object_unref (priv->sink_forward_pad);
   }
   h->sink_harness = sink_harness;
-  priv->sink_forward_pad = gst_object_ref (h->sink_harness->srcpad);
-  gst_harness_use_testclock (h->sink_harness);
+  gst_harness_set_forward_pad (h, h->sink_harness->srcpad);
   if (priv->forwarding && h->sinkpad)
     gst_pad_sticky_events_foreach (h->sinkpad, forward_sticky_events, h);
   gst_harness_set_forwarding (h->sink_harness, priv->forwarding);
@@ -2325,8 +2385,9 @@ GstFlowReturn
 gst_harness_sink_push_many (GstHarness * h, gint pushes)
 {
   GstFlowReturn ret = GST_FLOW_OK;
+  int i;
   g_assert (h->sink_harness);
-  for (int i = 0; i < pushes; i++) {
+  for (i = 0; i < pushes; i++) {
     ret = gst_harness_push_to_sink (h);
     if (ret != GST_FLOW_OK)
       break;
@@ -2513,7 +2574,9 @@ typedef struct
 {
   GstHarnessThread t;
 
-  GstEvent *event;
+  GstHarnessPrepareEventFunc func;
+  gpointer data;
+  GDestroyNotify notify;
 } GstHarnessPushEventThread;
 
 typedef struct
@@ -2574,7 +2637,8 @@ static void
 gst_harness_push_event_thread_free (GstHarnessPushEventThread * t)
 {
   if (t != NULL) {
-    gst_event_replace (&t->event, NULL);
+    if (t->notify != NULL)
+      t->notify (t->data);
     g_slice_free (GstHarnessPushEventThread, t);
   }
 }
@@ -2745,7 +2809,7 @@ gst_harness_stress_event_func (GstHarnessThread * t)
   guint count = 0;
 
   while (t->running) {
-    gst_harness_push_event (t->h, gst_event_ref (pet->event));
+    gst_harness_push_event (t->h, pet->func (t->h, pet->data));
 
     count++;
     g_usleep (t->sleep);
@@ -2760,7 +2824,7 @@ gst_harness_stress_upstream_event_func (GstHarnessThread * t)
   guint count = 0;
 
   while (t->running) {
-    gst_harness_push_upstream_event (t->h, gst_event_ref (pet->event));
+    gst_harness_push_upstream_event (t->h, pet->func (t->h, pet->data));
 
     count++;
     g_usleep (t->sleep);
@@ -2904,6 +2968,13 @@ gst_harness_ref_buffer (GstHarness * h, gpointer data)
   return gst_buffer_ref (GST_BUFFER_CAST (data));
 }
 
+static GstEvent *
+gst_harness_ref_event (GstHarness * h, gpointer data)
+{
+  (void) h;
+  return gst_event_ref (GST_EVENT_CAST (data));
+}
+
 /**
  * gst_harness_stress_push_buffer_start_full: (skip)
  * @h: a #GstHarness
@@ -2938,12 +3009,11 @@ gst_harness_stress_push_buffer_start_full (GstHarness * h,
  * @func: a #GstHarnessPrepareBufferFunc function called before every iteration
  * to prepare / create a #GstBuffer for pushing
  * @data: a #gpointer with data to the #GstHarnessPrepareBufferFunc function
- * @notify: a #GDestroyNotify that is called for every push to allow cleaning
- * up the #GstBuffer. (like gst_buffer_unref)
+ * @notify: a #GDestroyNotify that is called when thread is stopped
  * @sleep: a #gulong specifying how long to sleep in (microseconds) for
  * each call to gst_pad_push
  *
- * Push a #GstBuffer in intervals of @sleep microseconds.
+ * Push a #GstBuffer returned by @func in intervals of @sleep microseconds.
  *
  * MT safe.
  *
@@ -2991,11 +3061,43 @@ GstHarnessThread *
 gst_harness_stress_push_event_start_full (GstHarness * h,
     GstEvent * event, gulong sleep)
 {
+  return gst_harness_stress_push_event_with_cb_start_full (h,
+      gst_harness_ref_event, gst_event_ref (event),
+      (GDestroyNotify) gst_event_unref, sleep);
+}
+
+/**
+ * gst_harness_stress_push_event_with_cb_start_full: (skip)
+ * @h: a #GstHarness
+ * @func: a #GstHarnessPrepareEventFunc function called before every iteration
+ * to prepare / create a #GstEvent for pushing
+ * @data: a #gpointer with data to the #GstHarnessPrepareEventFunc function
+ * @notify: a #GDestroyNotify that is called when thread is stopped
+ * @sleep: a #gulong specifying how long to sleep in (microseconds) for
+ * each call to gst_pad_push
+ *
+ * Push a #GstEvent returned by @func onto the harnessed #GstElement sinkpad
+ * in intervals of @sleep microseconds.
+ *
+ * MT safe.
+ *
+ * Returns: a #GstHarnessThread
+ *
+ * Since: 1.8
+ */
+GstHarnessThread *
+gst_harness_stress_push_event_with_cb_start_full (GstHarness * h,
+    GstHarnessPrepareEventFunc func, gpointer data, GDestroyNotify notify,
+    gulong sleep)
+{
   GstHarnessPushEventThread *t = g_slice_new0 (GstHarnessPushEventThread);
   gst_harness_thread_init (&t->t,
       (GDestroyNotify) gst_harness_push_event_thread_free, h, sleep);
 
-  t->event = gst_event_ref (event);
+  t->func = func;
+  t->data = data;
+  t->notify = notify;
+
   GST_HARNESS_THREAD_START (event, t);
   return &t->t;
 }
@@ -3009,9 +3111,6 @@ gst_harness_stress_push_event_start_full (GstHarness * h,
  *
  * Push the @event onto the harnessed #GstElement srcpad in intervals of
  * @sleep microseconds.
- * Pushing events should generally be OOB events.
- * If you need serialized events, you may use a custom stress thread which
- * both pushes buffers and events.
  *
  * MT safe.
  *
@@ -3023,11 +3122,43 @@ GstHarnessThread *
 gst_harness_stress_push_upstream_event_start_full (GstHarness * h,
     GstEvent * event, gulong sleep)
 {
+  return gst_harness_stress_push_upstream_event_with_cb_start_full (h,
+      gst_harness_ref_event, gst_event_ref (event),
+      (GDestroyNotify) gst_event_unref, sleep);
+}
+
+/**
+ * gst_harness_stress_push_upstream_event_with_cb_start_full: (skip)
+ * @h: a #GstHarness
+ * @func: a #GstHarnessPrepareEventFunc function called before every iteration
+ * to prepare / create a #GstEvent for pushing
+ * @data: a #gpointer with data to the #GstHarnessPrepareEventFunc function
+ * @notify: a #GDestroyNotify that is called when thread is stopped
+ * @sleep: a #gulong specifying how long to sleep in (microseconds) for
+ * each call to gst_pad_push
+ *
+ * Push a #GstEvent returned by @func onto the harnessed #GstElement srcpad
+ * in intervals of @sleep microseconds.
+ *
+ * MT safe.
+ *
+ * Returns: a #GstHarnessThread
+ *
+ * Since: 1.8
+ */
+GstHarnessThread *
+gst_harness_stress_push_upstream_event_with_cb_start_full (GstHarness * h,
+    GstHarnessPrepareEventFunc func, gpointer data, GDestroyNotify notify,
+    gulong sleep)
+{
   GstHarnessPushEventThread *t = g_slice_new0 (GstHarnessPushEventThread);
   gst_harness_thread_init (&t->t,
       (GDestroyNotify) gst_harness_push_event_thread_free, h, sleep);
 
-  t->event = gst_event_ref (event);
+  t->func = func;
+  t->data = data;
+  t->notify = notify;
+
   GST_HARNESS_THREAD_START (upstream_event, t);
   return &t->t;
 }

@@ -7,7 +7,7 @@ GST_TOOLS_DIR = $(top_builddir)/tools
 REGISTRY_ENVIRONMENT = \
 	GST_REGISTRY=$(CHECK_REGISTRY)
 
-AM_TESTS_ENVIRONMENT = \
+AM_TESTS_ENVIRONMENT += \
         GST_STATE_IGNORE_ELEMENTS="$(STATE_IGNORE_ELEMENTS)"	\
         $(REGISTRY_ENVIRONMENT)					\
         GST_PLUGIN_SCANNER_1_0=$(top_builddir)/libs/gst/helpers/gst-plugin-scanner \
@@ -139,6 +139,7 @@ check_PROGRAMS =				\
 	gst/gstclock				\
 	gst/gststructure			\
 	gst/gsttag				\
+	gst/gsttracerrecord		 		\
 	gst/gsttagsetter			\
 	gst/gsttask				\
 	gst/gsttoc				\
@@ -205,6 +206,8 @@ LDADD = $(top_builddir)/libs/gst/check/libgstcheck-@GST_API_VERSION@.la \
 gst_gstcpp_SOURCES = gst/gstcpp.cc
 
 libs_gstlibscpp_SOURCES = libs/gstlibscpp.cc
+
+gst_gsttracerrecord_CFLAGS = $(GST_OBJ_CFLAGS) $(AM_CFLAGS) -DGST_USE_UNSTABLE_API
 
 gst_gstutils_LDADD = $(LDADD) $(GSL_LIBS) $(GMP_LIBS)
 

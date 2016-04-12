@@ -480,6 +480,7 @@ EXPORTS
 	gst_element_class_add_metadata
 	gst_element_class_add_pad_template
 	gst_element_class_add_static_metadata
+	gst_element_class_add_static_pad_template
 	gst_element_class_get_metadata
 	gst_element_class_get_pad_template
 	gst_element_class_get_pad_template_list
@@ -644,6 +645,9 @@ EXPORTS
 	gst_ghost_pad_new_no_target
 	gst_ghost_pad_new_no_target_from_template
 	gst_ghost_pad_set_target
+	gst_info_strdup_printf
+	gst_info_strdup_vprintf
+	gst_info_vasprintf
 	gst_init
 	gst_init_check
 	gst_init_get_option_group
@@ -1396,8 +1400,12 @@ EXPORTS
 	gst_tracer_factory_get_list
 	gst_tracer_factory_get_type
 	gst_tracer_get_type
-	gst_tracer_log_trace
+	gst_tracer_record_get_type
+	gst_tracer_record_log
+	gst_tracer_record_new
 	gst_tracer_register
+	gst_tracer_value_flags_get_type
+	gst_tracer_value_scope_get_type
 	gst_tracing_register_hook
 	gst_type_find_factory_call_function
 	gst_type_find_factory_get_caps
