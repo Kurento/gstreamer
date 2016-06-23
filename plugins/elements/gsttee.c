@@ -220,6 +220,8 @@ gst_tee_finalize (GObject * object)
 
   g_free (tee->last_message);
 
+  g_rec_mutex_clear (&tee->mutex_events);
+
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
 
@@ -298,6 +300,7 @@ gst_tee_class_init (GstTeeClass * klass)
 static void
 gst_tee_init (GstTee * tee)
 {
+  g_rec_mutex_init (&tee->mutex_events);
   tee->sinkpad = gst_pad_new_from_static_template (&sinktemplate, "sink");
   tee->sink_mode = GST_PAD_MODE_NONE;
 
@@ -406,10 +409,13 @@ gst_tee_request_new_pad (GstElement * element, GstPadTemplate * templ,
   gst_pad_set_query_function (srcpad, GST_DEBUG_FUNCPTR (gst_tee_src_query));
   gst_pad_set_getrange_function (srcpad,
       GST_DEBUG_FUNCPTR (gst_tee_src_get_range));
+  GST_OBJECT_FLAG_SET (srcpad, GST_PAD_FLAG_PROXY_CAPS);
+
+  GST_TEE_EVENTS_LOCK (tee);
   /* Forward sticky events to the new srcpad */
   gst_pad_sticky_events_foreach (tee->sinkpad, forward_sticky_events, srcpad);
-  GST_OBJECT_FLAG_SET (srcpad, GST_PAD_FLAG_PROXY_CAPS);
   gst_element_add_pad (GST_ELEMENT_CAST (tee), srcpad);
+  GST_TEE_EVENTS_UNLOCK (tee);
 
   return srcpad;
 
@@ -550,11 +556,12 @@ gst_tee_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
 {
   gboolean res;
 
-  switch (GST_EVENT_TYPE (event)) {
-    default:
-      res = gst_pad_event_default (pad, parent, event);
-      break;
+  GST_TEE_EVENTS_LOCK (GST_PAD_PARENT (pad));
+  res = gst_pad_event_default (pad, parent, event);
+  if (res && GST_EVENT_IS_STICKY (event)) {
+    gst_pad_store_sticky_event (pad, event);
   }
+  GST_TEE_EVENTS_UNLOCK (GST_PAD_PARENT (pad));
 
   return res;
 }

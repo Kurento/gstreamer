@@ -41,6 +41,11 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_TEE))
 #define GST_TEE_CAST(obj) ((GstTee*) obj)
 
+#define GST_TEE_EVENTS_LOCK(tee) \
+  (g_rec_mutex_lock (&GST_TEE_CAST ((tee))->mutex_events))
+#define GST_TEE_EVENTS_UNLOCK(tee) \
+  (g_rec_mutex_unlock (&GST_TEE_CAST ((tee))->mutex_events))
+
 typedef struct _GstTee 		GstTee;
 typedef struct _GstTeeClass 	GstTeeClass;
 
@@ -66,6 +71,7 @@ struct _GstTee {
   GstElement      element;
 
   /*< private >*/
+  GRecMutex      mutex_events;
   GstPad         *sinkpad;
   GstPad         *allocpad;
 
