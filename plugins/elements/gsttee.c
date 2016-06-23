@@ -183,8 +183,6 @@ static GstFlowReturn gst_tee_chain_list (GstPad * pad, GstObject * parent,
     GstBufferList * list);
 static gboolean gst_tee_sink_event (GstPad * pad, GstObject * parent,
     GstEvent * event);
-static gboolean gst_tee_sink_query (GstPad * pad, GstObject * parent,
-    GstQuery * query);
 static gboolean gst_tee_sink_activate_mode (GstPad * pad, GstObject * parent,
     GstPadMode mode, gboolean active);
 static gboolean gst_tee_src_query (GstPad * pad, GstObject * parent,
@@ -305,8 +303,6 @@ gst_tee_init (GstTee * tee)
 
   gst_pad_set_event_function (tee->sinkpad,
       GST_DEBUG_FUNCPTR (gst_tee_sink_event));
-  gst_pad_set_query_function (tee->sinkpad,
-      GST_DEBUG_FUNCPTR (gst_tee_sink_query));
   gst_pad_set_activatemode_function (tee->sinkpad,
       GST_DEBUG_FUNCPTR (gst_tee_sink_activate_mode));
   gst_pad_set_chain_function (tee->sinkpad, GST_DEBUG_FUNCPTR (gst_tee_chain));
@@ -560,19 +556,6 @@ gst_tee_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
       break;
   }
 
-  return res;
-}
-
-static gboolean
-gst_tee_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
-{
-  gboolean res;
-
-  switch (GST_QUERY_TYPE (query)) {
-    default:
-      res = gst_pad_query_default (pad, parent, query);
-      break;
-  }
   return res;
 }
 
