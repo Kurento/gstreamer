@@ -506,7 +506,10 @@ gst_ghost_pad_dispose (GObject * object)
   GST_OBJECT_LOCK (pad);
   internal = GST_PROXY_PAD_INTERNAL (pad);
 
+  GST_OBJECT_LOCK (internal);
+  GST_PROXY_PAD_INTERNAL (internal) = NULL;
   gst_pad_set_activatemode_function (internal, NULL);
+  GST_OBJECT_UNLOCK (internal);
 
   /* disposes of the internal pad, since the ghostpad is the only possible object
    * that has a refcount on the internal pad. */
