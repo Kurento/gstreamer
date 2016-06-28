@@ -589,6 +589,8 @@ gst_ghost_pad_construct (GstGhostPad * gpad)
           GST_OBJECT_CAST (pad)))
     goto parent_failed;
 
+  GST_OBJECT_LOCK (internal);
+
   /* The ghostpad is the parent of the internal pad and is the only object that
    * can have a refcount on the internal pad.
    * At this point, the GstGhostPad has a refcount of 1, and the internal pad has
@@ -604,6 +606,7 @@ gst_ghost_pad_construct (GstGhostPad * gpad)
   gst_pad_set_activatemode_function (internal,
       gst_ghost_pad_internal_activate_mode_default);
 
+  GST_OBJECT_UNLOCK (internal);
   GST_OBJECT_UNLOCK (pad);
 
   GST_GHOST_PAD_PRIVATE (gpad)->constructed = TRUE;
@@ -834,10 +837,14 @@ gst_ghost_pad_set_target (GstGhostPad * gpad, GstPad * newtarget)
 
   g_return_val_if_fail (GST_IS_GHOST_PAD (gpad), FALSE);
   g_return_val_if_fail (GST_PAD_CAST (gpad) != newtarget, FALSE);
-  g_return_val_if_fail (newtarget != GST_PROXY_PAD_INTERNAL (gpad), FALSE);
 
   GST_OBJECT_LOCK (gpad);
   internal = GST_PROXY_PAD_INTERNAL (gpad);
+
+  if (newtarget == internal) {
+    GST_OBJECT_UNLOCK (gpad);
+    g_return_val_if_fail (newtarget != internal, FALSE);
+  }
 
   if (newtarget)
     GST_DEBUG_OBJECT (gpad, "set target %s:%s", GST_DEBUG_PAD_NAME (newtarget));
@@ -860,6 +867,8 @@ gst_ghost_pad_set_target (GstGhostPad * gpad, GstPad * newtarget)
   }
 
   if (newtarget) {
+    /* FIXME: possible race condition:
+     *        using internal out of critical section */
     /* and link to internal pad without any checks */
     GST_DEBUG_OBJECT (gpad, "connecting internal pad to target %"
         GST_PTR_FORMAT, newtarget);
