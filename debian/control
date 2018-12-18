@@ -30,7 +30,7 @@ Build-Depends: debhelper (>= 9),
                gir1.2-freedesktop
 Build-Depends-Indep: python (>= 2.2),
                      gtk-doc-tools (>= 1.12),
-                     jade (>= 1.2.1),
+                     jadetex | texlive-formats-extra,
                      transfig (>= 3.2.3.c),
                      docbook-utils (>= 0.6.9),
                      docbook-xml,
@@ -91,7 +91,7 @@ Depends: libgstreamer1.5-0 (= ${binary:Version}),
          libglib2.0-dev,
          ${shlibs:Depends},
          ${misc:Depends},
-         gir1.2-gstreamer-1.5 (= ${binary:Version}),
+         gir1.2-gstreamer-1.5 (= ${binary:Version})
 Recommends: debhelper
 Suggests: gstreamer1.5-doc
 Description: GStreamer core development files

@@ -198,9 +198,10 @@ indep_conf_flags = \
 
 # only build the docs if gtk-doc-tools is installed, i.e. binary-indep is
 # called
-ifeq ($(shell test "`dpkg -l gtk-doc-tools | grep ^ii`" && echo binary-indep),binary-indep)
-indep_conf_flags += --enable-gtk-doc --enable-docbook
-endif
+# Kurento: Disable building docs
+#ifeq ($(shell test "`dpkg -l gtk-doc-tools | grep ^ii`" && echo binary-indep),binary-indep)
+#indep_conf_flags += --enable-gtk-doc --enable-docbook
+#endif
 
 DEB_CONFIGURE_EXTRA_FLAGS := $(common_conf_flags) $(indep_conf_flags)
 
