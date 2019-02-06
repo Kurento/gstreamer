@@ -8,7 +8,8 @@ include /usr/share/gnome-pkg-tools/1/rules/clean-la.mk
 
 export HOME=$(CURDIR)/fake-home
 
-DEB_DH_AUTORECONF_ARGS += --as-needed
+DEB_DH_AUTORECONF_ARGS = --as-needed
+DEB_DH_AUTORECONF_ARGS += ./autogen.sh
 
 CFLAGS += -Wno-error
 CXXFLAGS += -Wno-error
