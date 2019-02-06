@@ -93,7 +93,7 @@ Depends: libgstreamer1.5-0 (= ${binary:Version}),
          ${misc:Depends},
          gir1.2-gstreamer-1.5 (= ${binary:Version})
 Recommends: debhelper
-Suggests: gstreamer1.5-doc
+# Suggests: gstreamer1.5-doc
 Description: GStreamer core development files
  GStreamer is a streaming media framework, based on graphs of filters
  which operate on media data.  Applications using this library can do
@@ -105,25 +105,25 @@ Description: GStreamer core development files
  This package contains development files for the core library and
  elements.
 
-Package: gstreamer1.5-doc
-Architecture: all
-Section: doc
-Depends: ${misc:Depends},
-         libglib2.0-doc
-Recommends: libgstreamer1.5-dev (= ${source:Version})
-Description: GStreamer core documentation and manuals
- GStreamer is a streaming media framework, based on graphs of filters
- which operate on media data.  Applications using this library can do
- anything from real-time sound processing to playing videos, and just
- about anything else media-related.  Its plugin-based architecture means
- that new data types or processing capabilities can be added simply by
- installing new plug-ins.
- .
- This package contains documentation for core libraries and elements as
- well as:
-  * the GStreamer Manual
-  * the GStreamer Plugin Writers Guide
-  * Various API docs
+# Package: gstreamer1.5-doc
+# Architecture: all
+# Section: doc
+# Depends: ${misc:Depends},
+#          libglib2.0-doc
+# Recommends: libgstreamer1.5-dev (= ${source:Version})
+# Description: GStreamer core documentation and manuals
+#  GStreamer is a streaming media framework, based on graphs of filters
+#  which operate on media data.  Applications using this library can do
+#  anything from real-time sound processing to playing videos, and just
+#  about anything else media-related.  Its plugin-based architecture means
+#  that new data types or processing capabilities can be added simply by
+#  installing new plug-ins.
+#  .
+#  This package contains documentation for core libraries and elements as
+#  well as:
+#   * the GStreamer Manual
+#   * the GStreamer Plugin Writers Guide
+#   * Various API docs
 
 Package: gstreamer1.5-tools
 Architecture: any
@@ -131,7 +131,7 @@ Section: utils
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          pkg-config,
-         libgstreamer1.5-0 (>= 1.7.1.1~20160212115510.199.43d8e8b.wily~0)
+         libgstreamer1.5-0 (= ${binary:Version})
 Suggests: gstreamer1.5-plugins-base
 Description: Tools for use with GStreamer
  GStreamer is a streaming media framework, based on graphs of filters
