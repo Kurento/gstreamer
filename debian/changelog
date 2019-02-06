@@ -1,3 +1,28 @@
+gstreamer1.5 (1.8.1-1kurento1) UNRELEASED; urgency=medium
+
+  [ Jose Antonio Santos Cadenas ]
+  * Change debian format
+  * Not allow dev packages of 1.0 and 1.5
+  * Fix gstramer1.5-tools dependencies
+  * Fix gstramer1.5-tools dependencies (again)
+  * Make 1.0 and 1.5 packages compatibles
+  * Do nor remove postrm and preinst for dev package
+  * Fix post and preinst scripts
+
+  [ David Fernandez ]
+  * Remove symbols file to avoid error in debian package generation
+  * Remove symbols from rules file
+
+  [ Jose Antonio Santos Cadenas ]
+  * Rename dh_gstscancodecs
+  * debian: Add optional dependency for gsl
+
+  [ Juan Navarro ]
+  * Ubuntu 18.04: Fix dependency & disable docs
+  * debian/control: Disable docs for Bionic build
+
+ -- Juan Navarro <juan.navarro@gmx.es>  Wed, 06 Feb 2019 13:12:53 +0100
+
 gstreamer1.5 (1.5.0.1) experimental; urgency=medium
 
   * Change package name to diferenciate between versions
