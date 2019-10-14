@@ -1,4 +1,4 @@
-gstreamer1.5 (1.8.1-1kurento1) UNRELEASED; urgency=medium
+gstreamer1.5 (1.8.1-1kurento2) testing; urgency=medium
 
   [ Jose Antonio Santos Cadenas ]
   * Change debian format
@@ -20,8 +20,9 @@ gstreamer1.5 (1.8.1-1kurento1) UNRELEASED; urgency=medium
   [ Juan Navarro ]
   * Ubuntu 18.04: Fix dependency & disable docs
   * debian/control: Disable docs for Bionic build
+  * debian/rules: Run pre-build command with dh-autoreconf
 
- -- Juan Navarro <juan.navarro@gmx.es>  Wed, 06 Feb 2019 13:12:53 +0100
+ -- Juan Navarro <juan.navarro@gmx.es>  Mon, 14 Oct 2019 17:20:56 +0200
 
 gstreamer1.5 (1.5.0.1) experimental; urgency=medium
 
