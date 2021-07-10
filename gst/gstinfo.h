@@ -360,6 +360,8 @@ const gchar *   gst_debug_level_get_name (GstDebugLevel level);
 
 const gchar *   gst_debug_level_get_name_cee (GstDebugLevel level);
 
+int             gst_debug_level_get_syslog (GstDebugLevel level);
+
 void            gst_debug_escape_json(const gchar *src, gchar *dest, gsize dest_size);
 
 void            gst_debug_add_log_function            (GstLogFunction func,
