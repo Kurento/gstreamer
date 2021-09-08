@@ -1127,10 +1127,11 @@ gst_debug_log_default (GstDebugCategory * category, GstDebugLevel level,
     strftime (iso8601buf, ISO8601_BUF_SIZE, "%FT%T", &_tm);
     gst_debug_escape_json (gst_debug_message_get (message), message_encoded,
         MAX_JSON_MSG_LEN);
-#define PRINT_FMT "\"proc!id\":\"%d\",\"proc!tid\":%ju,\"pri\":\"%s\",\"subsys\":\"%s\",\"file!name\":\"%s\",\"file!line\":%d,\"native!function\":\"%s\",\"native!object\":\"%s\",\"msg\":\"%s\",\"pname\":\"%s\",\"appname\":\"%s\",\"hostname\":\"%s\",\"gstreamer!level\":%d,\"syslog!level\":%d}\n"
+#define PRINT_FMT "\"proc\":{\"id\":\"%d\",\"tid\":%ju},\"pri\":\"%s\",\"subsys\":\"%s\",\"file\":{\"name\":\"%s\",\"line\":%d},\"native\":{\"function\":\"%s\",\"object\":\"%s\"},\"msg\":\"%s\",\"pname\":\"%s\",\"appname\":\"%s\",\"hostname\":\"%s\",\"gstreamer\":{\"level\":%d},\"syslog\":{\"level\":%d}}\n"
     fprintf (log_file,
-        "{\"time\":\"%s.%09luZ\",\"native!time!elapsed\":%lu," PRINT_FMT,
-        iso8601buf, tv_ns, elapsed, pid, (uintptr_t) g_thread_self (),
+        "{\"time\":\"%s.%09luZ\",\"native\":{\"time\":{\"elapsed\":%lu}},"
+        PRINT_FMT, iso8601buf, tv_ns, elapsed, pid,
+        (uintptr_t) g_thread_self (),
         gst_debug_level_get_name_cee (level),
         gst_debug_category_get_name (category), file, line, function, obj,
         message_encoded, log_pname, log_appname, log_hostname,
