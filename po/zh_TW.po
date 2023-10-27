@@ -16,7 +16,7 @@
 # replaygain: 回放增益，用在確保playlist內所有音軌不會音量不同
 #           http://zh.wikipedia.org/zh-tw/%E5%9B%9E%E6%94%BE%E5%A2%9E%E7%9B%8A
 # problem: 大部分翻成錯誤
-# reference: 參照（應該有更好的名詞）
+# reference: 參照;參考;（應該有更好的名詞）
 # 保留原名：
 # 1. GStreamer專用元件: element, pad, caps, clock, pipeline, bin, 某些link
 # 2. 專有名詞： codec, container, beat, URI, URI scheme, TOC
